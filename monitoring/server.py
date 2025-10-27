@@ -1181,7 +1181,8 @@ def task_tool_usage(task_id):
         tools_with_errors = 0
         worker_chain = []
 
-        for key, records in sorted(records_by_key.items()):
+        # Sort by timestamp (key[1]) to maintain chronological order
+        for key, records in sorted(records_by_key.items(), key=lambda x: x[0][1]):
             # Prefer completed records (success != NULL) over in-progress (success == NULL)
             completed = [r for r in records if r['success'] is not None]
             selected = completed[-1] if completed else records[-1]
