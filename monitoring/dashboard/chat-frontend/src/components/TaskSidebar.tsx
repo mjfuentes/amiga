@@ -94,7 +94,21 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
   };
 
   const formatTimestamp = (timestamp: string) => {
-    const date = new Date(timestamp);
+    // Parse ISO timestamp (handle formats like "2025-10-16T23:11:15.782996" without timezone)
+    // Ensure proper ISO format by appending 'Z' if no timezone info present
+    let isoTimestamp = timestamp;
+    if (timestamp && !timestamp.includes('Z') && !timestamp.includes('+') && !timestamp.includes('-', 10)) {
+      isoTimestamp = timestamp + 'Z';
+    }
+
+    const date = new Date(isoTimestamp);
+
+    // Validate date
+    if (isNaN(date.getTime())) {
+      console.error('Invalid timestamp:', timestamp);
+      return 'unknown';
+    }
+
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
@@ -124,8 +138,8 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
   };
 
   const handleTaskClick = (taskId: string) => {
-    // Navigate to monitoring dashboard with task highlighted
-    window.location.href = `/#${taskId}`;
+    // Navigate to monitoring dashboard with task highlighted and referrer info
+    window.location.href = `/#${taskId}?ref=chat`;
   };
 
   if (!visible) return null;

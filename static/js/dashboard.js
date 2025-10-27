@@ -19,6 +19,7 @@ let autoRefreshEnabled = true;
 let currentData = null;
 let currentTaskId = null;
 let currentTaskStatus = null;
+let currentTaskReferrer = null; // Track where user came from (chat, etc)
 let reconnectAttempts = 0;
 let maxReconnectAttempts = MAX_RECONNECT_ATTEMPTS;
 let reconnectDelay = INITIAL_RECONNECT_DELAY;
@@ -52,13 +53,18 @@ function handleHashRouting() {
         return;
     }
 
-    // Remove the # prefix
+    // Remove the # prefix and parse query params
     const hashValue = hash.substring(1);
+    const [taskPart, queryString] = hashValue.split('?');
+
+    // Parse query parameters (e.g., ?ref=chat)
+    const params = new URLSearchParams(queryString || '');
+    const referrer = params.get('ref');
 
     // Check if it's a task link (format: task_<id> or just the hex ID)
-    if (hashValue.startsWith('task_')) {
-        const taskId = hashValue.substring(5); // Remove 'task_' prefix
-        showTaskDetail(taskId);
+    if (taskPart.startsWith('task_')) {
+        const taskId = taskPart.substring(5); // Remove 'task_' prefix
+        showTaskDetail(taskId, referrer);
         // Clear hash to prevent issues with browser back button
         history.replaceState(null, null, ' ');
     }
@@ -885,8 +891,9 @@ async function showSessionDetail(sessionId) {
     }
 }
 
-async function showTaskDetail(taskId) {
+async function showTaskDetail(taskId, referrer = null) {
     currentTaskId = taskId;
+    currentTaskReferrer = referrer; // Store where user came from
     const modal = document.getElementById('taskModal');
     modal.classList.add('active');
 
@@ -1580,9 +1587,18 @@ async function stopCurrentTask() {
 }
 
 function closeTaskModal() {
+    // Check if user came from chat interface
+    if (currentTaskReferrer === 'chat') {
+        // Navigate back to chat
+        window.location.href = '/chat';
+        return;
+    }
+
+    // Default behavior: just close the modal
     document.getElementById('taskModal').classList.remove('active');
     currentTaskId = null;
     currentTaskStatus = null;
+    currentTaskReferrer = null;
 }
 
 async function revertTask() {
