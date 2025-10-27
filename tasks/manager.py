@@ -186,6 +186,7 @@ class Task:
     context: str | None = None  # Context summary from Claude API (user's original message, conversation context)
     current_phase: str | None = None  # Current subagent/phase (e.g., 'code_agent', 'git-merge')
     phase_number: int = 0  # Sequential phase counter (increments with each Task tool call)
+    last_agent_type: str | None = None  # Most recent delegated agent (for persistence)
     result: str | None = None
     error: str | None = None
     pid: int | None = None  # Process ID for running tasks
@@ -210,6 +211,9 @@ class Task:
             data["current_phase"] = None
         if "phase_number" not in data:
             data["phase_number"] = 0
+        # Ensure last_agent_type exists (for backwards compatibility)
+        if "last_agent_type" not in data:
+            data["last_agent_type"] = None
         return cls(**data)
 
     def add_activity(self, message: str, output_lines: int | None = None):
@@ -463,6 +467,25 @@ class TaskManager:
             Number of tasks cleaned up
         """
         cleaned_count = self.db.cleanup_stale_pending_tasks(max_age_hours)
+        return cleaned_count
+
+    def cleanup_all_pending_tasks(self, user_id: int | None = None) -> int:
+        """
+        Clean up all pending tasks by marking them as stopped.
+        Useful for clearing the queue when tasks shouldn't run.
+        
+        Args:
+            user_id: Optional user ID to filter tasks (None = all users)
+            
+        Returns:
+            Number of tasks cleaned up
+        """
+        cleaned_count = self.db.cleanup_all_pending_tasks(user_id)
+        
+        if cleaned_count > 0:
+            user_msg = f"for user {user_id}" if user_id else "across all users"
+            logger.info(f"Cleaned up {cleaned_count} pending tasks {user_msg}")
+        
         return cleaned_count
 
     async def stop_task(self, task_id: str) -> tuple[bool, str]:
