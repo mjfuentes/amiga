@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   MainContainer,
   ChatContainer,
@@ -47,16 +47,42 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [filteredCommands, setFilteredCommands] = useState(COMMANDS);
   const lastMessageCountRef = useRef(messages.length);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const inputListenerAttachedRef = useRef(false);
 
+
+  // Attach input listener for command autocomplete
+  const attachInputListener = useCallback(() => {
+    if (inputListenerAttachedRef.current) return;
+
+    const textarea = document.querySelector('.cs-message-input__content-editor') as HTMLTextAreaElement;
+    if (textarea) {
+      const handleInput = (e: Event) => {
+        const target = e.target as HTMLTextAreaElement;
+        const value = target.value || target.textContent || '';
+        handleInputChange(value);
+      };
+
+      textarea.addEventListener('input', handleInput);
+      inputListenerAttachedRef.current = true;
+      inputRef.current = textarea;
+
+      // Cleanup on unmount
+      return () => {
+        textarea.removeEventListener('input', handleInput);
+        inputListenerAttachedRef.current = false;
+      };
+    }
+  }, []);
 
   // Focus the input on mount and when messages change
   useEffect(() => {
     // Small delay to ensure DOM is ready
     const timer = setTimeout(() => {
       focusInput();
+      attachInputListener();
     }, 100);
     return () => clearTimeout(timer);
-  }, []);
+  }, [attachInputListener]);
 
   // Re-focus after sending messages
   useEffect(() => {
@@ -70,6 +96,14 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
     lastMessageCountRef.current = messages.length;
   }, [messages]);
+
+  // Re-attach listener when component re-renders
+  useEffect(() => {
+    if (!inputListenerAttachedRef.current) {
+      const cleanup = attachInputListener();
+      return cleanup;
+    }
+  }, [connected, attachInputListener]);
 
   // Helper function to focus the input
   const focusInput = () => {
