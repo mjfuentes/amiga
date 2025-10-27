@@ -1599,39 +1599,33 @@ async function revertTask() {
     revertBtn.innerHTML = '<span>⏳</span><span>Creating...</span>';
 
     try {
-        // Create revert task via API
-        const response = await fetch('/api/tasks', {
+        // Create revert task via public API endpoint (no auth required for dashboard)
+        const response = await fetch(`/api/tasks/${currentTaskId}/revert`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                prompt: `Revert the changes made in task ${currentTaskId}`,
-                workspace: '/Users/matifuentes/Workspace/amiga',
-                model: 'sonnet',
-                agent_type: 'orchestrator',
-                context: `User requested to revert changes from task ID: ${currentTaskId}`
-            })
         });
 
         if (!response.ok) {
-            throw new Error(`Failed to create revert task: ${response.statusText}`);
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Failed to create revert task: ${response.statusText}`);
         }
 
         const result = await response.json();
 
-        // Show success notification
-        showNotification(`Revert task created: #${result.task_id}`, 'success');
+        // Show success notification with task ID
+        showToast(`Revert task created: #${result.task_id}`, 'success');
 
-        // Close modal and refresh task list
+        // Close modal and refresh task list to show new task
         closeTaskModal();
         await fetchUnifiedData();
 
     } catch (error) {
         console.error('Error creating revert task:', error);
-        showNotification('Failed to create revert task', 'error');
+        showToast(`Failed to create revert task: ${error.message}`, 'error');
 
-        // Restore button state
+        // Restore button state on error
         revertBtn.disabled = false;
         revertBtn.innerHTML = originalText;
     }
@@ -2242,3 +2236,4 @@ window.openLightbox = openLightbox;
 window.closeLightbox = closeLightbox;
 window.navigateLightbox = navigateLightbox;
 window.showTaskDocument = showTaskDocument;
+window.revertTask = revertTask;
