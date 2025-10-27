@@ -46,6 +46,38 @@ from core.exceptions import AMIGAError
 logger = logging.getLogger(__name__)
 
 
+def _extract_agent_type_from_context(context: str | None) -> str:
+    """
+    Extract agent type from context summary.
+
+    The Claude API returns context_summary with prefixes like:
+    - "use frontend-agent to..." → frontend_agent
+    - "use orchestrator to..." → orchestrator
+    - No prefix → code_agent (default)
+
+    Args:
+        context: Context summary string from Claude API
+
+    Returns:
+        Agent type string: 'frontend_agent', 'orchestrator', or 'code_agent' (default)
+    """
+    if not context:
+        return "code_agent"
+
+    context_lower = context.lower().strip()
+
+    # Check for explicit agent routing prefixes
+    if context_lower.startswith("use frontend-agent to") or context_lower.startswith("use frontend_agent to"):
+        return "frontend_agent"
+    elif context_lower.startswith("use orchestrator to"):
+        return "orchestrator"
+    elif context_lower.startswith("use research-agent to") or context_lower.startswith("use research_agent to"):
+        return "research_agent"
+    else:
+        # Default to code_agent
+        return "code_agent"
+
+
 def _consolidate_tool_calls(tool_calls: list[dict]) -> list[dict]:
     """
     Consolidate consecutive identical tool operations into single entries with count.
@@ -591,6 +623,14 @@ async def _handle_message_async(data, user_id: str):
             task_params["agent_type"] = background_task_info["agent_type"]
         if "context" in background_task_info and background_task_info["context"]:
             task_params["context"] = background_task_info["context"]
+
+        # CRITICAL: Extract agent_type from context if not explicitly provided
+        # Claude API returns context with "use frontend-agent to..." or "use orchestrator to..."
+        if "agent_type" not in task_params and "context" in task_params:
+            task_params["agent_type"] = _extract_agent_type_from_context(task_params["context"])
+            logger.info(
+                f"Extracted agent_type='{task_params['agent_type']}' from context: {task_params['context'][:80]}..."
+            )
 
         task = await task_manager.create_task(**task_params)
 
