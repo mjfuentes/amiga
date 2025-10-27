@@ -165,15 +165,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         setIsTyping(true);
         await onClearChat();
         setIsTyping(false);
-        toast.success('Chat cleared successfully', {
-          duration: 2000,
-          position: 'bottom-center',
-          style: {
-            background: '#3a3a3a',
-            color: '#f0f0f0',
-            border: '1px solid #4a4a4a',
-          },
-        });
         // Re-focus after clearing
         focusInput();
       } else if (cleanMessage === '/help') {

@@ -97,14 +97,8 @@ export const useSocket = (token: string | null) => {
       // Clear localStorage
       clearStoredMessages();
 
-      // Clear messages and show system message
-      const systemMessage: Message = {
-        id: Date.now().toString(),
-        content: '🔄 Chat cleared from Telegram',
-        role: 'assistant',
-        timestamp: Date.now(),
-      };
-      setMessages([systemMessage]);
+      // Clear messages completely
+      setMessages([]);
     });
 
     setSocket(newSocket);
@@ -155,14 +149,8 @@ export const useSocket = (token: string | null) => {
         // Clear localStorage
         clearStoredMessages();
 
-        // Clear local messages state and add system message
-        const systemMessage: Message = {
-          id: Date.now().toString(),
-          content: '🔄 Chat session restarted',
-          role: 'assistant',
-          timestamp: Date.now(),
-        };
-        setMessages([systemMessage]);
+        // Clear local messages state completely
+        setMessages([]);
         console.log('Chat session cleared');
         return true;
       } else {
