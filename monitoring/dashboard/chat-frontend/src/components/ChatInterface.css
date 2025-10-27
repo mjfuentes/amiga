@@ -59,10 +59,10 @@
 
 .landing .cs-message-input__content-editor-wrapper {
   background: #1a1a1a !important;
-  border: 1px solid #2a2a2a !important;
+  border: 1px solid #3a3a3a !important;
   border-radius: 8px !important;
   padding: 0 !important;
-  box-shadow: none !important;
+  box-shadow: 0 0 0 1px rgba(106, 159, 181, 0.2) !important;
   transition: all 0.2s ease !important;
 }
 
@@ -77,8 +77,8 @@
 }
 
 .landing .cs-message-input__content-editor-wrapper:focus-within {
-  border-color: #3a3a3a !important;
-  box-shadow: none !important;
+  border-color: #4a4a4a !important;
+  box-shadow: 0 0 0 2px rgba(106, 159, 181, 0.3) !important;
 }
 
 .landing .cs-message-input__content-editor:focus {
@@ -585,10 +585,11 @@
 /* Remove the chatscope wrapper's background */
 .cs-message-input__content-editor-wrapper {
   background: #1a1a1a !important;
-  border: 1px solid #2a2a2a !important;
+  border: 1px solid #3a3a3a !important;
   border-radius: 4px !important;
   padding: 0 !important;
   transition: all 0.2s ease !important;
+  box-shadow: 0 0 0 1px rgba(106, 159, 181, 0.2) !important;
 }
 
 .cs-message-input__content-editor-container {
@@ -618,7 +619,8 @@
 }
 
 .cs-message-input__content-editor-wrapper:focus-within {
-  border-color: #3a3a3a !important;
+  border-color: #4a4a4a !important;
+  box-shadow: 0 0 0 2px rgba(106, 159, 181, 0.3) !important;
 }
 
 .cs-message-input__content-editor:focus {
