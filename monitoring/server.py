@@ -1093,6 +1093,9 @@ def task_tool_usage(task_id):
     try:
         from collections import defaultdict
 
+        print(f"[DEBUG] task_tool_usage called for task_id={task_id}", flush=True)
+        logger.info(f"[DEBUG] task_tool_usage called for task_id={task_id}")
+
         # End any stale read transaction to see latest writes
         task_manager.db.conn.rollback()
 
@@ -1141,33 +1144,64 @@ def task_tool_usage(task_id):
                 "parameters": parameters,
             })
 
-        # Deduplicate: For each tool call, keep only the completed record (success != NULL)
-        # Group by (tool_name, timestamp_prefix) where timestamp_prefix is first 19 chars (YYYY-MM-DDTHH:MM:SS)
-        # This groups pre+post hook entries for the same tool call
-        from collections import defaultdict
-        tool_groups = defaultdict(list)
-        for record in raw_records:
-            # Group key: tool_name + timestamp prefix (to second precision)
-            timestamp_prefix = record["timestamp"][:19] if len(record["timestamp"]) >= 19 else record["timestamp"]
-            key = (record["tool_name"], timestamp_prefix)
-            tool_groups[key].append(record)
+        # Deduplicate: Match in-progress (success=NULL) with their completed records
+        # Pre-hook creates NULL record, post-hook updates it (or creates new if update failed)
+        # Strategy: Sequential scan to pair NULL with next completed record for same tool within 500ms
+        from datetime import datetime as dt
 
-        # For each group, prefer completed records (success != NULL) over in-progress (success = NULL)
+        # Sort by timestamp for sequential processing
+        raw_records.sort(key=lambda x: x["timestamp"])
+
         tool_calls = []
         tools_by_type = defaultdict(int)
         tools_with_errors = 0
         worker_chain = []
+        skip_indices = set()  # Track records already paired
 
-        for (tool_name, timestamp_prefix), records in tool_groups.items():
-            # If multiple records, prefer completed (success != NULL) over in-progress (success = NULL)
-            completed = [r for r in records if r["success"] is not None]
-            record = completed[0] if completed else records[0]
+        print(f"[DEBUG] Deduplicating {len(raw_records)} raw tool records for task {task_id}", flush=True)
+        logger.info(f"Deduplicating {len(raw_records)} raw tool records for task {task_id}")
 
-            # Build tool call entry (match real-time WebSocket format)
+        for i, record in enumerate(raw_records):
+            if i in skip_indices:
+                continue
+
+            # If this is in-progress (NULL), try to find its completion
+            if record["success"] is None:
+                # Look ahead for completed record with same tool_name within 500ms
+                try:
+                    record_time = dt.fromisoformat(record["timestamp"].replace('Z', '+00:00'))
+                    completion_index = None
+
+                    for j in range(i + 1, min(i + 5, len(raw_records))):  # Check next 5 records max
+                        if j in skip_indices:
+                            continue
+                        next_record = raw_records[j]
+                        if next_record["tool_name"] != record["tool_name"]:
+                            continue
+                        if next_record["success"] is None:
+                            continue
+
+                        # Check if within 500ms
+                        next_time = dt.fromisoformat(next_record["timestamp"].replace('Z', '+00:00'))
+                        time_diff_ms = (next_time - record_time).total_seconds() * 1000
+
+                        if time_diff_ms <= 500:
+                            # Found matching completion - skip NULL, let completion be processed later
+                            completion_index = j
+                            break
+
+                    if completion_index is not None:
+                        # Skip the NULL record, the completion will be processed in its turn
+                        skip_indices.add(i)
+                        continue
+                except Exception:
+                    pass  # If timestamp parsing fails, just include the record
+
+            # Build tool call entry
             entry = {
                 "timestamp": record["timestamp"],
                 "tool_name": record["tool_name"],
-                "tool": record["tool_name"],  # Keep for backward compatibility
+                "tool": record["tool_name"],
                 "success": record["success"],
                 "has_error": record["success"] is False,
                 "error": record["error"],
@@ -1195,8 +1229,8 @@ def task_tool_usage(task_id):
                     }
                 )
 
-        # Sort by timestamp for display order
-        tool_calls.sort(key=lambda x: x["timestamp"])
+        print(f"[DEBUG] Deduplicated: {len(raw_records)} raw → {len(tool_calls)} final (skipped {len(skip_indices)} NULL records)", flush=True)
+        logger.info(f"Deduplicated: {len(raw_records)} raw → {len(tool_calls)} final (skipped {len(skip_indices)} NULL records)")
 
         # Try to enrich with output_preview from session JSONL files
         # This is especially important for TodoWrite calls to show planning progress
