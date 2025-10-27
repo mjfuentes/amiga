@@ -13,7 +13,6 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import toast, { Toaster } from 'react-hot-toast';
 import { Message as MessageType } from '../types';
-import { MusicPlayer } from './MusicPlayer';
 import './ChatInterface.css';
 
 interface ChatInterfaceProps {
@@ -393,7 +392,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     return (
       <div className="chat-interface landing">
         <Toaster />
-        <MusicPlayer />
         <div className="landing-container">
           <div className="landing-content">
             <img
@@ -437,7 +435,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   return (
     <div className={`chat-interface ${isShuttingDown ? 'shutting-down' : ''}`}>
       <Toaster />
-      <MusicPlayer />
       <div className="chat-header">
         <div className="chat-title">
           <img
