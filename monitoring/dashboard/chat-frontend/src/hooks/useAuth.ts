@@ -5,6 +5,8 @@ const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 const NO_AUTH_MODE = process.env.REACT_APP_NO_AUTH_MODE !== 'false'; // Enabled by default
 const ADMIN_USER_ID = process.env.REACT_APP_ADMIN_USER_ID || '521930094';
 const ADMIN_EMAIL = 'matiasj.fuentes@gmail.com';
+const TOKEN_KEY = 'chat_token';
+const USER_KEY = 'chat_user';
 
 export const useAuth = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -18,13 +20,14 @@ export const useAuth = () => {
         const dummyToken = `dummy-token-${ADMIN_USER_ID}`;
         setToken(dummyToken);
         setUser({ user_id: ADMIN_USER_ID, username: ADMIN_EMAIL });
-        localStorage.setItem('token', dummyToken);
+        localStorage.setItem(TOKEN_KEY, dummyToken);
+        localStorage.setItem(USER_KEY, JSON.stringify({ user_id: ADMIN_USER_ID, username: ADMIN_EMAIL }));
         setLoading(false);
         return;
       }
 
       // Check for existing token
-      const storedToken = localStorage.getItem('token');
+      const storedToken = localStorage.getItem(TOKEN_KEY);
       if (storedToken) {
         try {
           const response = await fetch(`${API_URL}/auth/verify`, {
@@ -37,12 +40,15 @@ export const useAuth = () => {
             const data = await response.json();
             setToken(storedToken);
             setUser(data.user);
+            localStorage.setItem(USER_KEY, JSON.stringify(data.user));
           } else {
-            localStorage.removeItem('token');
+            localStorage.removeItem(TOKEN_KEY);
+            localStorage.removeItem(USER_KEY);
           }
         } catch (error) {
           console.error('Token verification failed:', error);
-          localStorage.removeItem('token');
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(USER_KEY);
         }
       }
       setLoading(false);
@@ -69,7 +75,8 @@ export const useAuth = () => {
       const data = await response.json();
       setToken(data.token);
       setUser(data.user);
-      localStorage.setItem('token', data.token);
+      localStorage.setItem(TOKEN_KEY, data.token);
+      localStorage.setItem(USER_KEY, JSON.stringify(data.user));
       return true;
     } catch (error) {
       console.error('Login error:', error);
@@ -95,7 +102,8 @@ export const useAuth = () => {
       const data = await response.json();
       setToken(data.token);
       setUser(data.user);
-      localStorage.setItem('token', data.token);
+      localStorage.setItem(TOKEN_KEY, data.token);
+      localStorage.setItem(USER_KEY, JSON.stringify(data.user));
       return true;
     } catch (error) {
       console.error('Registration error:', error);
@@ -106,7 +114,8 @@ export const useAuth = () => {
   const logout = () => {
     setToken(null);
     setUser(null);
-    localStorage.removeItem('token');
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
   };
 
   return {
