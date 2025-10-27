@@ -395,10 +395,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         <div className="landing-container">
           <div className="landing-content">
             <img
-              src="/chat/amiga-logo.png"
+              src="/amiga-logo.png"
               alt="AMIGA Logo"
               className="landing-logo clickable"
-              onClick={() => window.location.href = '/'}
+              onClick={() => window.location.href = '/dashboard'}
               title="View monitoring dashboard"
             />
             <div className="landing-input-wrapper">
@@ -438,10 +438,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       <div className="chat-header">
         <div className="chat-title">
           <img
-            src="/chat/amiga-logo.png"
+            src="/amiga-logo.png"
             alt="AMIGA"
             className="chat-logo clickable"
-            onClick={() => window.location.href = '/'}
+            onClick={() => window.location.href = '/dashboard'}
             title="View monitoring dashboard"
           />
         </div>
@@ -479,7 +479,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                       )}
                       {msg.role === 'assistant' && (
                         <div className="assistant-avatar" aria-label="Assistant message">
-                          <img src="/chat/amiga-logo.png" alt="AI" className="avatar-logo" />
+                          <img src="/amiga-logo.png" alt="AI" className="avatar-logo" />
                         </div>
                       )}
                       <span className="message-time">{formatTime(msg.timestamp)}</span>

@@ -1590,7 +1590,7 @@ function closeTaskModal() {
     // Check if user came from chat interface
     if (currentTaskReferrer === 'chat') {
         // Navigate back to chat
-        window.location.href = '/chat';
+        window.location.href = '/';
         return;
     }
 

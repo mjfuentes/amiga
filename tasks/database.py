@@ -611,6 +611,32 @@ class Database:
 
         return [self._row_to_task_dict(row) for row in cursor.fetchall()]
 
+    def get_tasks_by_status(self, status: str, limit: int | None = None) -> list[dict]:
+        """Get all tasks with a specific status (across all users)"""
+        cursor = self.conn.cursor()
+
+        if limit:
+            cursor.execute(
+                """
+                SELECT * FROM tasks
+                WHERE status = ?
+                ORDER BY updated_at DESC
+                LIMIT ?
+            """,
+                (status, limit),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT * FROM tasks
+                WHERE status = ?
+                ORDER BY updated_at DESC
+            """,
+                (status,),
+            )
+
+        return [self._row_to_task_dict(row) for row in cursor.fetchall()]
+
     def get_active_tasks(self, user_id: int) -> list[dict]:
         """Get active (pending/running) tasks for user"""
         cursor = self.conn.cursor()
