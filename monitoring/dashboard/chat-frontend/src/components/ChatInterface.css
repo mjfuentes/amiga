@@ -69,6 +69,7 @@
 .landing-input-wrapper {
   width: 100%;
   max-width: 600px;
+  position: relative; /* For absolute positioning of command suggestions */
 }
 
 /* Override message input styles for landing page */
@@ -164,6 +165,23 @@
 .chat-logo {
   height: 24px;
   width: auto;
+}
+
+.chat-logo.clickable,
+.landing-logo.clickable {
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.chat-logo.clickable:hover,
+.landing-logo.clickable:hover {
+  opacity: 0.8;
+  transform: scale(1.05);
+}
+
+.chat-logo.clickable:active,
+.landing-logo.clickable:active {
+  transform: scale(0.98);
 }
 
 .connection-status {
@@ -607,6 +625,14 @@
   font-size: 0.625rem !important;
 }
 
+/* Message input wrapper - positions command suggestions */
+.message-input-wrapper {
+  position: relative !important;
+  flex: 0 0 auto !important;
+  flex-shrink: 0 !important;
+  width: 100% !important;
+}
+
 /* Message input container */
 .cs-message-input {
   background: #151515 !important;
@@ -619,7 +645,6 @@
   flex-shrink: 0 !important;
   min-height: fit-content !important;
   z-index: 100 !important;
-  position: relative !important;
 }
 
 /* Remove the chatscope wrapper's background */
@@ -939,6 +964,19 @@
     width: 12px;
     height: 12px;
   }
+
+  /* Adjust command suggestions for mobile padding */
+  .command-suggestions {
+    left: 1rem; /* Match mobile MessageInput padding */
+    right: 1rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .landing .command-suggestions {
+    left: 0;
+    right: 0;
+    margin-bottom: 0;
+  }
 }
 
 /* Touch-friendly targets for mobile */
@@ -964,12 +1002,10 @@
 
 /* Command suggestions dropdown - positioned above MessageInput */
 .command-suggestions {
-  position: fixed;
-  bottom: 76px; /* Height of message input + padding */
-  left: 50%;
-  transform: translateX(-50%);
-  width: calc(100% - 3rem);
-  max-width: 868px; /* Match chat container max-width (900px) - padding */
+  position: absolute;
+  bottom: 100%; /* Position above the input */
+  left: 1.5rem; /* Match MessageInput padding */
+  right: 1.5rem; /* Match MessageInput padding */
   z-index: 1001;
   background: #1a1a1a;
   border: 1px solid #2a2a2a;
@@ -977,7 +1013,15 @@
   border-radius: 6px 6px 0 0;
   max-height: 300px;
   overflow-y: auto;
+  margin-bottom: 0.75rem; /* Match MessageInput top padding to sit flush with input area */
   animation: commandSlideUp 0.2s ease-out;
+}
+
+/* Command suggestions in landing page - no horizontal offset needed */
+.landing .command-suggestions {
+  left: 0;
+  right: 0;
+  margin-bottom: 0;
 }
 
 @keyframes commandSlideUp {

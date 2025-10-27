@@ -297,9 +297,21 @@ Context Summary Guidelines:
 • Mention specific files/paths/repos if discussed
 • Note any constraints explicitly mentioned by user (time, scope, preferences)
 • State the working directory/repository
+• CRITICAL: If task involves chat interface or monitoring dashboard, START with "use frontend-agent to [task description]"
 • DO NOT add implementation suggestions or technical approaches
 • DO NOT interpret or expand on what user wants - just report facts
 • Keep factual and concise (2-3 sentences max)
+
+Frontend Agent Detection:
+When task clearly involves:
+• Chat interface: /chat route, chat UI, chat frontend, chat screen, ChatInterface component
+• Monitoring dashboard: /dashboard route, metrics UI, dashboard frontend, dashboard screen
+• UI/UX changes to these components
+→ START context_summary with "use frontend-agent to [what user wants]"
+
+Example:
+User: "add dark mode to chat"
+context_summary: "use frontend-agent to add dark mode to chat. User asked: 'add dark mode to chat'. Working in amiga repo."
 </background_task_format>
 
 <examples>
