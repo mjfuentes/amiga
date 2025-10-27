@@ -419,7 +419,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 </div>
               )}
               <MessageInput
-                placeholder="Ask me anything... (type / for commands)"
+                placeholder="How can I help? (type / for commands)"
                 value={inputValue}
                 onChange={(val) => handleInputChange(val)}
                 onSend={handleSend}
