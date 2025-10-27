@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+# Session-end hook for finalizing session data
+# Updates session database and generates summary
+
+# Suppress output to prevent "hook error" messages
+exec 2>/dev/null
+exec 1>/dev/null
+
+set +e
+trap 'exit 0' EXIT ERR
+
+# Read input
+INPUT=$(cat)
+
+# Process session end with Python
+echo "$INPUT" | python3 << 'PYTHON_SCRIPT'
+import json
+import sys
+import os
+from datetime import datetime
+from pathlib import Path
+from collections import defaultdict
+import fcntl
+
+def safe_file_write(filepath, update_func):
+    """Safely update JSON file with file locking"""
+    filepath = Path(filepath)
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+
+    # Create file if it doesn't exist
+    if not filepath.exists():
+        if filepath.name == 'sessions.json':
+            filepath.write_text('{}')
+        else:
+            filepath.write_text('[]')
+
+    try:
+        with open(filepath, 'r+') as f:
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            try:
+                data = json.load(f)
+                data = update_func(data)
+                f.seek(0)
+                f.truncate()
+                json.dump(data, f, indent=2)
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        return True
+    except:
+        return False
+
+try:
+    input_data = json.loads(sys.stdin.read())
+    session_id = os.environ.get('SESSION_ID') or input_data.get('session_id', 'unknown')
+    user_id = os.environ.get('USER_ID') or input_data.get('user_id', 'unknown')
+
+    # Determine directories
+    # Priority: absolute path > current working dir
+    data_dir = None
+    log_dir = None
+
+    for base in [
+        Path('/Users/matifuentes/Workspace/agentlab'),  # Project root (highest priority)
+        Path.cwd().parent if Path.cwd().name == 'telegram_bot' else Path.cwd(),  # Handle telegram_bot subdir
+        Path('/Users/matifuentes/Workspace/agentlab/telegram_bot')
+    ]:
+        if (base / 'data').exists():
+            data_dir = base / 'data'
+            break
+
+    for base in [
+        Path.cwd() / 'logs',
+        Path('/Users/matifuentes/Workspace/agentlab/logs'),
+        Path('/Users/matifuentes/Workspace/agentlab/telegram_bot/logs')
+    ]:
+        if base.exists():
+            log_dir = base / 'sessions' / session_id
+            break
+
+    if not log_dir:
+        log_dir = Path('/tmp/claude-sessions') / session_id
+
+    # 1. Generate summary from logs
+    if log_dir.exists():
+        summary = {
+            'task_id': session_id,
+            'total_tools_used': 0,
+            'tools_by_type': {},
+            'blocked_operations': 0,
+            'tools_with_errors': 0
+        }
+
+        # Read post-tool logs
+        post_log = log_dir / 'post_tool_use.jsonl'
+        if post_log.exists():
+            tools_by_type = defaultdict(int)
+            with open(post_log) as f:
+                for line in f:
+                    if line.strip():
+                        try:
+                            data = json.loads(line)
+                            tool = data.get('tool', 'unknown')
+                            tools_by_type[tool] += 1
+                            summary['total_tools_used'] += 1
+                            if data.get('has_error', False):
+                                summary['tools_with_errors'] += 1
+                        except:
+                            pass
+            summary['tools_by_type'] = dict(tools_by_type)
+
+        # Read pre-tool logs
+        pre_log = log_dir / 'pre_tool_use.jsonl'
+        if pre_log.exists():
+            with open(pre_log) as f:
+                for line in f:
+                    if line.strip():
+                        try:
+                            data = json.loads(line)
+                            if data.get('status') == 'blocked':
+                                summary['blocked_operations'] += 1
+                        except:
+                            pass
+
+        # Write summary to log dir
+        summary_file = log_dir / 'summary.json'
+        with open(summary_file, 'w') as f:
+            json.dump(summary, f, indent=2)
+
+    # 2. Update sessions.json database
+    if data_dir:
+        sessions_file = data_dir / 'sessions.json'
+
+        def update_sessions(data):
+            """Update session record"""
+            # sessions.json is keyed by user_id
+            if str(user_id) not in data:
+                data[str(user_id)] = {
+                    'user_id': int(user_id) if user_id != 'unknown' else 0,
+                    'created_at': datetime.utcnow().isoformat(),
+                    'last_activity': datetime.utcnow().isoformat(),
+                    'history': []
+                }
+            else:
+                # Update last activity
+                data[str(user_id)]['last_activity'] = datetime.utcnow().isoformat()
+
+            return data
+
+        safe_file_write(sessions_file, update_sessions)
+
+    # 3. Update agent_status.json with session completion
+    if data_dir:
+        status_file = data_dir / 'agent_status.json'
+
+        def update_agent_status(data):
+            record = {
+                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                'task_id': session_id,
+                'status': 'completed',
+                'message': 'Session ended',
+                'metadata': {'session_id': session_id}
+            }
+            data.append(record)
+            return data[-10000:]
+
+        safe_file_write(status_file, update_agent_status)
+
+except Exception as e:
+    pass
+
+PYTHON_SCRIPT
+
+exit 0

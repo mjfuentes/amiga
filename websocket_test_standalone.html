@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Test - Standalone</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f3f4f6;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        h1, h2 {
+            margin-top: 0;
+            color: #1f2937;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .connected {
+            background: #dcfce7;
+            color: #166534;
+        }
+        .disconnected {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        button {
+            padding: 8px 16px;
+            margin: 4px;
+            border: none;
+            border-radius: 4px;
+            background: #3b82f6;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        .log {
+            background: #1f2937;
+            color: #e5e7eb;
+            padding: 15px;
+            border-radius: 4px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        .log-line {
+            margin: 2px 0;
+            padding: 2px 0;
+        }
+        .log-time {
+            color: #9ca3af;
+            margin-right: 8px;
+        }
+        .log-info {
+            color: #60a5fa;
+        }
+        .log-success {
+            color: #34d399;
+        }
+        .log-error {
+            color: #f87171;
+        }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .metric-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .metric-value {
+            font-size: 32px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .metric-label {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        input {
+            padding: 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>WebSocket Dashboard Test</h1>
+        <p>
+            Status: <span class="status disconnected" id="status">Disconnected</span> |
+            Server: <input type="text" id="serverUrl" value="http://localhost:3000" style="width: 250px;"> |
+            <button onclick="connectToServer()">Connect</button>
+            <button onclick="disconnectFromServer()">Disconnect</button>
+        </p>
+    </div>
+
+    <div class="container">
+        <h2>Controls</h2>
+        <button onclick="subscribeToMetrics()">Subscribe</button>
+        <button onclick="unsubscribeFromMetrics()">Unsubscribe</button>
+        <button onclick="requestRefresh()">Request Refresh</button>
+        <button onclick="clearLogs()">Clear Logs</button>
+        <br><br>
+        <label>
+            Update Interval (seconds):
+            <input type="number" id="interval" value="2" min="1" max="60" style="width: 80px;">
+            <button onclick="setUpdateInterval()">Set Interval</button>
+        </label>
+    </div>
+
+    <div class="container">
+        <h2>Metrics</h2>
+        <div class="metrics">
+            <div class="metric-box">
+                <div class="metric-value" id="eventsCount">0</div>
+                <div class="metric-label">Events Received</div>
+            </div>
+            <div class="metric-box">
+                <div class="metric-value" id="metricsCount">0</div>
+                <div class="metric-label">Metrics Updates</div>
+            </div>
+            <div class="metric-box">
+                <div class="metric-value" id="totalTasks">-</div>
+                <div class="metric-label">Total Tasks</div>
+            </div>
+            <div class="metric-box">
+                <div class="metric-value" id="totalCost">-</div>
+                <div class="metric-label">Total Cost</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Event Log</h2>
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        let socket = null;
+        let eventsCount = 0;
+        let metricsCount = 0;
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            const line = document.createElement('div');
+            line.className = `log-line log-${type}`;
+            line.innerHTML = `<span class="log-time">${time}</span>${message}`;
+            logDiv.appendChild(line);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function updateStatus(connected) {
+            const statusEl = document.getElementById('status');
+            if (connected) {
+                statusEl.textContent = 'Connected';
+                statusEl.className = 'status connected';
+            } else {
+                statusEl.textContent = 'Disconnected';
+                statusEl.className = 'status disconnected';
+            }
+        }
+
+        function connectToServer() {
+            const serverUrl = document.getElementById('serverUrl').value;
+
+            if (socket && socket.connected) {
+                log('Already connected', 'info');
+                return;
+            }
+
+            log(`Connecting to ${serverUrl}...`, 'info');
+
+            socket = io(serverUrl, {
+                transports: ['websocket', 'polling'],
+                reconnection: true,
+                reconnectionDelay: 1000,
+                reconnectionAttempts: 5
+            });
+
+            socket.on('connect', () => {
+                log('Connected to server!', 'success');
+                updateStatus(true);
+                eventsCount++;
+                updateMetrics();
+            });
+
+            socket.on('disconnect', (reason) => {
+                log(`Disconnected: ${reason}`, 'error');
+                updateStatus(false);
+            });
+
+            socket.on('connect_error', (error) => {
+                log(`Connection error: ${error.message}`, 'error');
+            });
+
+            socket.on('connected', (data) => {
+                log(`Received 'connected' event: ${JSON.stringify(data)}`, 'success');
+                eventsCount++;
+                updateMetrics();
+            });
+
+            socket.on('subscribed', (data) => {
+                log(`Subscribed: ${JSON.stringify(data)}`, 'success');
+                eventsCount++;
+                updateMetrics();
+            });
+
+            socket.on('unsubscribed', (data) => {
+                log('Unsubscribed from metrics', 'info');
+                eventsCount++;
+                updateMetrics();
+            });
+
+            socket.on('interval_updated', (data) => {
+                log(`Interval updated: ${data.interval}s`, 'success');
+                eventsCount++;
+                updateMetrics();
+            });
+
+            socket.on('metrics_update', (data) => {
+                log('Metrics update received', 'success');
+                eventsCount++;
+                metricsCount++;
+                updateMetrics();
+                displayMetrics(data);
+            });
+
+            socket.on('error', (data) => {
+                log(`Server error: ${data.error}`, 'error');
+                eventsCount++;
+                updateMetrics();
+            });
+        }
+
+        function disconnectFromServer() {
+            if (socket) {
+                socket.disconnect();
+                log('Disconnecting...', 'info');
+                updateStatus(false);
+            } else {
+                log('Not connected', 'info');
+            }
+        }
+
+        function subscribeToMetrics() {
+            if (!socket || !socket.connected) {
+                log('Not connected to server', 'error');
+                return;
+            }
+            const interval = parseInt(document.getElementById('interval').value) || 2;
+            socket.emit('subscribe', { hours: 24, update_interval: interval });
+            log(`Subscribing with interval ${interval}s...`, 'info');
+        }
+
+        function unsubscribeFromMetrics() {
+            if (!socket || !socket.connected) {
+                log('Not connected to server', 'error');
+                return;
+            }
+            socket.emit('unsubscribe');
+            log('Unsubscribing...', 'info');
+        }
+
+        function requestRefresh() {
+            if (!socket || !socket.connected) {
+                log('Not connected to server', 'error');
+                return;
+            }
+            socket.emit('request_refresh', { hours: 24 });
+            log('Requesting refresh...', 'info');
+        }
+
+        function setUpdateInterval() {
+            if (!socket || !socket.connected) {
+                log('Not connected to server', 'error');
+                return;
+            }
+            const interval = parseInt(document.getElementById('interval').value) || 2;
+            socket.emit('set_interval', { interval });
+            log(`Setting interval to ${interval}s...`, 'info');
+        }
+
+        function updateMetrics() {
+            document.getElementById('eventsCount').textContent = eventsCount;
+            document.getElementById('metricsCount').textContent = metricsCount;
+        }
+
+        function displayMetrics(data) {
+            try {
+                if (data.overview && data.overview.tasks) {
+                    document.getElementById('totalTasks').textContent = data.overview.tasks.total || 0;
+                }
+                if (data.overview && data.overview.costs) {
+                    const cost = data.overview.costs.total_cost || 0;
+                    document.getElementById('totalCost').textContent = '$' + cost.toFixed(2);
+                }
+            } catch (error) {
+                log(`Error displaying metrics: ${error.message}`, 'error');
+            }
+        }
+
+        function clearLogs() {
+            document.getElementById('log').innerHTML = '';
+            log('Logs cleared', 'info');
+        }
+
+        // Auto-connect on load
+        window.addEventListener('load', () => {
+            log('Page loaded. Click "Connect" to test WebSocket connection.', 'info');
+        });
+    </script>
+</body>
+</html>

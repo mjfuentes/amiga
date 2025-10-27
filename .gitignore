@@ -1,0 +1,98 @@
+# Environment
+.env
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Data files
+data/*.json
+data/*.pid
+telegram_bot/data/*.json
+telegram_bot/data/*.db*
+monitoring/data/
+!data/.gitkeep
+
+# Logs
+logs/*.log
+logs/sessions/
+!logs/.gitkeep
+bot.log
+telegram_bot/logs/
+monitoring/*.log
+monitoring/server.log
+
+# IDE
+.vscode/
+.idea/
+.cursor/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Telegram
+*.session
+
+# Python
+*.egg-info/
+dist/
+build/
+
+# Temporary files
+temp/
+*.vtt
+
+# Test artifacts
+telegram_bot/tests/__pycache__/
+telegram_bot/tests/.pytest_cache/
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Documentation build artifacts
+telegram_bot/docs/_build/
+
+# Prevent test files in telegram_bot root (should be in tests/)
+telegram_bot/test_*.py
+
+# Prevent test files in project root (should be in tests/)
+/test_*.py
+/simple_test_*.py
+
+# Prevent analysis scripts in telegram_bot (should be in root or docs/analysis/)
+telegram_bot/analyze_*.py
+
+# Backup files
+*.bak
+*.bak2
+*.backup
+data/*.db*
+telegram_bot/games/
+
+# Node dependencies
+node_modules/
+**/node_modules/
+
+# React build artifacts (large files)
+telegram_bot/static/chat/static/js/*.js
+telegram_bot/static/chat/static/js/*.js.map
+static/chat/static/js/*.js.map
+static/chat/static/css/*.css.map
+monitoring/dashboard/chat-frontend/static/
+
+# Playwright MCP screenshots (should use docs/screenshots/ or telegram_bot/static/)
+.playwright-mcp/
+
+# Claude hooks backups
+.claude/hooks.backup/
+
+# Data archives (auto-generated backups)
+data/archive/
+
+# Prevent duplicate files in root (belong in telegram_bot/)
+/database.py
+/config.py
