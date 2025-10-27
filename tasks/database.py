@@ -18,7 +18,7 @@ from core.exceptions import AMIGAError
 logger = logging.getLogger(__name__)
 
 # Database schema version for migrations
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 
 class Database:
@@ -129,6 +129,9 @@ class Database:
 
         if from_version <= 12 and to_version >= 13:
             self._migration_v13_add_documents_table(cursor)
+
+        if from_version <= 13 and to_version >= 14:
+            self._migration_v14_add_last_agent_type(cursor)
 
     def _migration_v1_initial_schema(self, cursor):
         """Migration v1: Create initial database schema with tasks, tool_usage, and agent_status tables"""
@@ -408,6 +411,19 @@ class Database:
 
         logger.info("Documents table created successfully")
 
+    def _migration_v14_add_last_agent_type(self, cursor):
+        """Migration v14: Add last_agent_type column to tasks table for tracking delegated agents"""
+        logger.info("Adding last_agent_type column to tasks table...")
+
+        cursor.execute("PRAGMA table_info(tasks)")
+        columns = [col[1] for col in cursor.fetchall()]
+
+        if "last_agent_type" not in columns:
+            cursor.execute("ALTER TABLE tasks ADD COLUMN last_agent_type TEXT")
+            logger.info("last_agent_type column added successfully")
+        else:
+            logger.info("last_agent_type column already exists, skipping")
+
     # ========== TASK OPERATIONS ==========
 
     async def create_task(
@@ -522,6 +538,9 @@ class Database:
         allowing us to track which subagent is currently active and what phase
         the task is in (e.g., "code_agent - phase 2/4").
 
+        Also updates last_agent_type to persist the most recent delegated agent
+        for future reference.
+
         Args:
             task_id: Task ID to update
             subagent_type: Type of subagent being invoked (e.g., "code_agent", "git-merge")
@@ -535,10 +554,10 @@ class Database:
             cursor.execute(
                 """
                 UPDATE tasks
-                SET current_phase = ?, phase_number = ?, updated_at = ?
+                SET current_phase = ?, phase_number = ?, last_agent_type = ?, updated_at = ?
                 WHERE task_id = ?
             """,
-                (subagent_type, phase_num, datetime.now().isoformat(), task_id),
+                (subagent_type, phase_num, subagent_type, datetime.now().isoformat(), task_id),
             )
             self.conn.commit()
             rowcount = cursor.rowcount
@@ -1834,6 +1853,7 @@ class Database:
             "context": row["context"] if "context" in row.keys() else None,
             "current_phase": row["current_phase"] if "current_phase" in row.keys() else None,
             "phase_number": row["phase_number"] if "phase_number" in row.keys() else 0,
+            "last_agent_type": row["last_agent_type"] if "last_agent_type" in row.keys() else None,
             "result": row["result"],
             "error": row["error"],
             "pid": row["pid"],
