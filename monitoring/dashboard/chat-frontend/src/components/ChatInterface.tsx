@@ -15,6 +15,11 @@ import toast, { Toaster } from 'react-hot-toast';
 import { Message as MessageType } from '../types';
 import './ChatInterface.css';
 
+interface Task {
+  task_id: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'stopped';
+}
+
 interface ChatInterfaceProps {
   messages: MessageType[];
   connected: boolean;
@@ -50,6 +55,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [filteredCommands, setFilteredCommands] = useState(COMMANDS);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [isShuttingDown, setIsShuttingDown] = useState(false);
+  const [taskStatusMap, setTaskStatusMap] = useState<Map<string, string>>(new Map());
   const lastMessageCountRef = useRef(messages.length);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputListenerAttachedRef = useRef(false);
@@ -66,12 +72,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   };
 
   // Handle command selection
-  const selectCommand = useCallback((command: string) => {
+  const selectCommand = (command: string) => {
     setInputValue(command + ' ');
     setShowCommands(false);
     // Re-focus after selecting command
     focusInput();
-  }, []);
+  };
 
   // Attach input listener for command autocomplete
   const attachInputListener = useCallback(() => {
@@ -131,7 +137,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         inputListenerAttachedRef.current = false;
       };
     }
-  }, [showCommands, filteredCommands, highlightedIndex, selectCommand]);
+  }, [showCommands, filteredCommands, highlightedIndex]);
 
   // Focus the input on mount and when messages change
   useEffect(() => {
@@ -164,6 +170,49 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   }, [connected, attachInputListener]);
 
+  // Fetch task status data via SSE
+  useEffect(() => {
+    let eventSource: EventSource | null = null;
+
+    const connectSSE = () => {
+      try {
+        eventSource = new EventSource('/api/stream/metrics?hours=24');
+
+        eventSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            const tasks = data?.overview?.task_statistics?.recent_24h?.tasks;
+            if (tasks && Array.isArray(tasks)) {
+              const statusMap = new Map<string, string>();
+              tasks.forEach((task: Task) => {
+                statusMap.set(task.task_id, task.status);
+              });
+              setTaskStatusMap(statusMap);
+            }
+          } catch (error) {
+            console.error('Failed to parse SSE data:', error);
+          }
+        };
+
+        eventSource.onerror = () => {
+          eventSource?.close();
+          // Retry connection after 5 seconds
+          setTimeout(connectSSE, 5000);
+        };
+      } catch (error) {
+        console.error('Failed to create EventSource:', error);
+      }
+    };
+
+    connectSSE();
+
+    return () => {
+      if (eventSource) {
+        eventSource.close();
+      }
+    };
+  }, []);
+
   // Copy to clipboard helper
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -195,6 +244,24 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     });
   };
 
+  // Get status color for task status indicators
+  const getStatusColor = (status: string): string => {
+    switch (status) {
+      case 'running':
+        return '#6a9fb5'; // Blue
+      case 'completed':
+        return '#7cb342'; // Green
+      case 'failed':
+        return '#f87171'; // Red
+      case 'pending':
+        return '#888'; // Gray
+      case 'stopped':
+        return '#888'; // Gray
+      default:
+        return 'transparent';
+    }
+  };
+
   // Process text to linkify task IDs (e.g., #task_abc123 or #47f03a)
   const linkifyTaskIds = (text: string): React.ReactNode => {
     // Match pattern: #<task_id> where task_id is either:
@@ -211,10 +278,13 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         parts.push(text.substring(lastIndex, match.index));
       }
 
-      // Add clickable link for task ID
+      // Add clickable link for task ID with status indicator
       const taskId = match[1]; // Extract task_xxx or hex without #
       // For short hex IDs, use the hex directly; for task_ format, keep as is
       const urlTaskId = taskId.startsWith('task_') ? taskId : `task_${taskId}`;
+      const status = taskStatusMap.get(urlTaskId);
+      const statusColor = status ? getStatusColor(status) : 'transparent';
+
       parts.push(
         <a
           key={`task-${taskId}-${match.index}`}
@@ -225,8 +295,15 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             // Navigate to monitoring dashboard with task highlighted
             window.location.href = `/dashboard#${urlTaskId}?ref=chat`;
           }}
-          title={`View task ${taskId} in monitoring dashboard`}
+          title={`View task ${taskId} in monitoring dashboard${status ? ` (${status})` : ''}`}
         >
+          {status && (
+            <span
+              className="task-status-dot"
+              style={{ backgroundColor: statusColor }}
+              aria-label={`Task status: ${status}`}
+            />
+          )}
           #{taskId}
         </a>
       );
@@ -512,6 +589,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                                 if (taskIdMatch) {
                                   const taskId = taskIdMatch[1];
                                   const urlTaskId = taskId.startsWith('task_') ? taskId : `task_${taskId}`;
+                                  const status = taskStatusMap.get(urlTaskId);
+                                  const statusColor = status ? getStatusColor(status) : 'transparent';
                                   return (
                                     <a
                                       href={`/dashboard#${urlTaskId}?ref=chat`}
@@ -520,9 +599,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                                         e.preventDefault();
                                         window.location.href = `/dashboard#${urlTaskId}?ref=chat`;
                                       }}
-                                      title={`View task ${taskId} in monitoring dashboard`}
+                                      title={`View task ${taskId} in monitoring dashboard${status ? ` (${status})` : ''}`}
                                       {...props}
                                     >
+                                      {status && (
+                                        <span
+                                          className="task-status-dot"
+                                          style={{ backgroundColor: statusColor }}
+                                          aria-label={`Task status: ${status}`}
+                                        />
+                                      )}
                                       {codeString}
                                     </a>
                                   );

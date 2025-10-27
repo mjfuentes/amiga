@@ -530,6 +530,9 @@
   background: rgba(224, 120, 86, 0.1);
   border-bottom: 1px solid rgba(224, 120, 86, 0.3);
   transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 .message-content a.task-link:hover {
@@ -541,6 +544,16 @@
 
 .message-content a.task-link:active {
   transform: translateY(0);
+}
+
+/* Task status indicator dot */
+.task-status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 3px currentColor;
 }
 
 /* Modern polished theme overrides for @chatscope components */
