@@ -18,22 +18,25 @@ interface Task {
 }
 
 interface MetricsData {
-  tasks: Task[];
-  errors: any[];
-  costs: {
-    total_cost_24h: number;
-    by_model: Record<string, number>;
+  overview: {
+    task_statistics: {
+      total: number;
+      by_status: Record<string, number>;
+      running_tasks: Task[];
+    };
+    tool_usage: {
+      total_calls: number;
+      success_rate: number;
+      by_tool: Record<string, number>;
+      total_cost_24h: number;
+      by_model: Record<string, number>;
+    };
+    system_health: {
+      recent_errors: any[];
+    };
   };
-  tool_usage: {
-    total_calls: number;
-    success_rate: number;
-    by_tool: Record<string, number>;
-  };
-  stats: {
-    total_tasks: number;
-    success_rate: number;
-    code_sessions: number;
-  };
+  activity: any[];
+  sessions: any[];
 }
 
 export const MonitoringDashboard: React.FC<MonitoringDashboardProps> = ({ onBack }) => {
@@ -58,6 +61,7 @@ export const MonitoringDashboard: React.FC<MonitoringDashboardProps> = ({ onBack
         eventSource.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
+            console.log('Received SSE data:', data);
             setMetrics(data);
           } catch (err) {
             console.error('Failed to parse SSE data:', err);
@@ -179,19 +183,23 @@ export const MonitoringDashboard: React.FC<MonitoringDashboardProps> = ({ onBack
         <div className="stats-grid">
           <div className="stat-card">
             <div className="stat-label">Total Tasks</div>
-            <div className="stat-value">{metrics?.stats.total_tasks || 0}</div>
+            <div className="stat-value">{metrics?.overview.task_statistics.total || 0}</div>
           </div>
           <div className="stat-card">
             <div className="stat-label">Success Rate</div>
-            <div className="stat-value">{metrics?.stats.success_rate?.toFixed(1) || 0}%</div>
+            <div className="stat-value">
+              {metrics?.overview.tool_usage.success_rate?.toFixed(1) || 0}%
+            </div>
           </div>
           <div className="stat-card">
             <div className="stat-label">24h Cost</div>
-            <div className="stat-value">{formatCost(metrics?.costs.total_cost_24h || 0)}</div>
+            <div className="stat-value">
+              {formatCost(metrics?.overview.tool_usage.total_cost_24h || 0)}
+            </div>
           </div>
           <div className="stat-card">
             <div className="stat-label">Tool Calls</div>
-            <div className="stat-value">{metrics?.tool_usage.total_calls || 0}</div>
+            <div className="stat-value">{metrics?.overview.tool_usage.total_calls || 0}</div>
           </div>
         </div>
 
@@ -199,12 +207,11 @@ export const MonitoringDashboard: React.FC<MonitoringDashboardProps> = ({ onBack
         <div className="dashboard-section">
           <h2>Active Tasks</h2>
           <div className="tasks-list">
-            {metrics?.tasks.filter(t => t.status === 'running').length === 0 ? (
+            {!metrics?.overview.task_statistics.running_tasks ||
+            metrics.overview.task_statistics.running_tasks.length === 0 ? (
               <div className="empty-state">No active tasks</div>
             ) : (
-              metrics?.tasks
-                .filter(t => t.status === 'running')
-                .map(task => (
+              metrics.overview.task_statistics.running_tasks.map(task => (
                   <div key={task.task_id} className="task-card">
                     <div className="task-header">
                       <div className="task-info">
@@ -242,11 +249,12 @@ export const MonitoringDashboard: React.FC<MonitoringDashboardProps> = ({ onBack
         </div>
 
         {/* Recent Errors */}
-        {metrics?.errors && metrics.errors.length > 0 && (
-          <div className="dashboard-section">
-            <h2>Recent Errors</h2>
-            <div className="errors-list">
-              {metrics.errors.slice(0, 5).map((error: any, idx: number) => (
+        {metrics?.overview.system_health.recent_errors &&
+          metrics.overview.system_health.recent_errors.length > 0 && (
+            <div className="dashboard-section">
+              <h2>Recent Errors</h2>
+              <div className="errors-list">
+                {metrics.overview.system_health.recent_errors.slice(0, 5).map((error: any, idx: number) => (
                 <div key={idx} className="error-card">
                   <div className="error-header">
                     <span className="error-task">{error.task_id || 'Unknown'}</span>
@@ -254,51 +262,55 @@ export const MonitoringDashboard: React.FC<MonitoringDashboardProps> = ({ onBack
                   </div>
                   <div className="error-message">{error.error || error.message}</div>
                 </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
         {/* Cost Breakdown */}
-        {metrics?.costs.by_model && Object.keys(metrics.costs.by_model).length > 0 && (
-          <div className="dashboard-section">
-            <h2>Cost by Model (24h)</h2>
-            <div className="cost-breakdown">
-              {Object.entries(metrics.costs.by_model).map(([model, cost]) => (
+        {metrics?.overview.tool_usage.by_model &&
+          Object.keys(metrics.overview.tool_usage.by_model).length > 0 && (
+            <div className="dashboard-section">
+              <h2>Cost by Model (24h)</h2>
+              <div className="cost-breakdown">
+                {Object.entries(metrics.overview.tool_usage.by_model).map(([model, cost]) => (
                 <div key={model} className="cost-item">
                   <span className="cost-model">{model}</span>
                   <span className="cost-value">{formatCost(cost as number)}</span>
                 </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
         {/* Tool Usage */}
-        {metrics?.tool_usage.by_tool && Object.keys(metrics.tool_usage.by_tool).length > 0 && (
-          <div className="dashboard-section">
-            <h2>Tool Usage</h2>
-            <div className="tool-usage">
-              {Object.entries(metrics.tool_usage.by_tool)
-                .sort(([, a], [, b]) => (b as number) - (a as number))
-                .slice(0, 10)
-                .map(([tool, count]) => (
-                  <div key={tool} className="tool-usage-item">
-                    <span className="tool-usage-name">{tool}</span>
-                    <div className="tool-usage-bar">
-                      <div
-                        className="tool-usage-fill"
-                        style={{
-                          width: `${((count as number) / metrics.tool_usage.total_calls) * 100}%`
-                        }}
-                      />
+        {metrics?.overview.tool_usage.by_tool &&
+          Object.keys(metrics.overview.tool_usage.by_tool).length > 0 && (
+            <div className="dashboard-section">
+              <h2>Tool Usage</h2>
+              <div className="tool-usage">
+                {Object.entries(metrics.overview.tool_usage.by_tool)
+                  .sort(([, a], [, b]) => (b as number) - (a as number))
+                  .slice(0, 10)
+                  .map(([tool, count]) => (
+                    <div key={tool} className="tool-usage-item">
+                      <span className="tool-usage-name">{tool}</span>
+                      <div className="tool-usage-bar">
+                        <div
+                          className="tool-usage-fill"
+                          style={{
+                            width: `${
+                              ((count as number) / metrics.overview.tool_usage.total_calls) * 100
+                            }%`
+                          }}
+                        />
+                      </div>
+                      <span className="tool-usage-count">{count}</span>
                     </div>
-                    <span className="tool-usage-count">{count}</span>
-                  </div>
-                ))}
+                  ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
       </div>
     </div>
   );
