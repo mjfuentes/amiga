@@ -268,7 +268,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     return cleaned.trim();
   };
 
-  const handleSend = async (message: string) => {
+  const handleSend = useCallback(async (message: string) => {
     if (message.trim()) {
       setShowCommands(false);
 
@@ -325,7 +325,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         setTimeout(focusInput, 100);
       }
     }
-  };
+  }, [messages.length, onClearChat, onSendMessage]);
 
   // Update ref when handleSend changes
   useEffect(() => {
