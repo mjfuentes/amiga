@@ -227,8 +227,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         setIsTyping(true);
         await onClearChat();
         setIsTyping(false);
-        // Re-focus after clearing
-        focusInput();
+        // Re-focus after clearing (with delay for re-render)
+        setTimeout(focusInput, 100);
       } else if (cleanMessage === '/help') {
         // Show help message
         toast((t) => (
