@@ -245,9 +245,10 @@ async def ask_claude(
 </context>
 
 <capabilities>
-Handle routing and answer questions:
+Handle routing and answer questions for amiga project:
 • DIRECT: General knowledge (no file access needed)
 • ROUTE: File operations → BACKGROUND_TASK format
+• Focus: amiga web chat interface, monitoring dashboard, task management
 </capabilities>
 
 <routing_rules>
@@ -325,7 +326,7 @@ Orchestrator Agent Detection:
 When task clearly involves:
 • Complex multi-component features: "build [system]", "create [feature with 5+ parts]"
 • Multi-domain tasks: backend + frontend + infrastructure together
-• System-level changes: "implement authentication system", "add payment flow", "build API layer"
+• System-level changes: "implement authentication system", "add API layer"
 • Large scope: tasks that need orchestration across multiple agents/modules
 • New features with research needed: "integrate [new service]", "add [complex feature]"
 → START context_summary with "use orchestrator to [what user wants]"
@@ -334,9 +335,6 @@ Examples:
 User: "build authentication system"
 context_summary: "use orchestrator to build authentication system. User asked: 'build authentication system'. Working in amiga repo."
 
-User: "implement payment flow with Stripe"
-context_summary: "use orchestrator to implement payment flow with Stripe. User asked: 'implement payment flow with Stripe integration'. Working in groovetherapy repo."
-
 User: "create admin dashboard with metrics"
 context_summary: "use orchestrator to create admin dashboard with metrics. User asked: 'create admin dashboard with user metrics and analytics'. Backend + frontend needed. Working in amiga repo."
 </background_task_format>
@@ -344,14 +342,11 @@ context_summary: "use orchestrator to create admin dashboard with metrics. User 
 <examples>
 GOOD:
 • "fix bug in main.py" → BACKGROUND_TASK|Fix bug in main.py|Fixing the bug.|User asked: "fix bug in main.py". Working in amiga repo.
-• "build landing page" → BACKGROUND_TASK|Build landing page|Creating a responsive landing page.|User asked: "build landing page" for groovetherapy project. Previous message mentioned modern, responsive design preference.
-• "update gallery" → BACKGROUND_TASK|Update website gallery|Updating gallery.|User said: "update gallery" while working on mjfuentes.github.io portfolio. Want to add recent project screenshots (mentioned earlier).
 • "persist conversation in /chat" → BACKGROUND_TASK|Persist conversation in /chat frontend|Working on chat persistence.|use frontend-agent to persist conversation during session in /chat frontend. User asked: "persist conversation during session in /chat frontend". Working in amiga repo.
 • "make chat like a command line, 90s like" → BACKGROUND_TASK|Modify chat interface to Matrix-style command line (90s hacker aesthetic)|Updating chat UI to retro terminal style.|use frontend-agent to make chat like a command line, 90s like, like neo talking to morpheo in matrix. User asked: "make chat like a command line, 90s like, like neo talking to morpheo in matrix". Working in amiga repo.
 • "change chat to dark mode" → BACKGROUND_TASK|Add dark mode to chat interface|Adding dark mode to chat.|use frontend-agent to change chat to dark mode. User asked: "change chat to dark mode". Working in amiga repo.
 • "add metrics graph to dashboard" → BACKGROUND_TASK|Add metrics visualization to monitoring dashboard|Adding graph to dashboard.|use frontend-agent to add metrics graph to dashboard. User asked: "add metrics graph to dashboard". Working in amiga repo.
 • "build authentication system" → BACKGROUND_TASK|Build authentication system with JWT|Building authentication system.|use orchestrator to build authentication system. User asked: "build authentication system with JWT tokens". Multi-component task: backend models, API endpoints, middleware. Working in amiga repo.
-• "implement payment flow" → BACKGROUND_TASK|Implement payment flow with Stripe|Setting up payment integration.|use orchestrator to implement payment flow with Stripe. User asked: "implement payment flow with Stripe integration". Needs backend webhooks, frontend checkout, database schema. Working in groovetherapy repo.
 • "create admin dashboard" → BACKGROUND_TASK|Create admin dashboard with user metrics|Building admin dashboard.|use orchestrator to create admin dashboard with metrics. User asked: "create admin dashboard with user metrics and analytics". Backend + frontend + API integration needed. Working in amiga repo.
 • "what is asyncio?" → [Direct answer about asyncio]
 • "check logs" → [Direct log summary from context]
@@ -387,7 +382,7 @@ BAD:
 
 <user_profile>
 Name: Matias Fuentes
-Projects: cloudmate, Latinamerica2026, permanent_residence, groovetherapy, mjfuentes.github.io, amiga
+Project: amiga - Web-based chat interface with AI routing
 Tailor responses to his technical interests
 </user_profile>
 
@@ -405,7 +400,7 @@ current_workspace: {safe_workspace}
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
             logger.error("ANTHROPIC_API_KEY not set", exc_info=True)
-            return "Configuration error. Check API key.", None
+            return "Configuration error. Check API key.", None, None
 
         # Create client
         client = anthropic.Anthropic(api_key=api_key)
