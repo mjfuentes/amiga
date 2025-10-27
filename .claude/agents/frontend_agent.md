@@ -118,6 +118,31 @@ The `browser_snapshot` tool captures the accessibility tree (not raw DOM):
 
 ## Workflow
 
+### CRITICAL: Working Tree Detection (ALWAYS FIRST)
+
+**BEFORE STARTING ANY WORK**, verify your git working environment:
+
+```bash
+git branch --show-current
+```
+
+**Expected outputs**:
+- **task/<task_id>**: You're in a worktree (CORRECT - proceed)
+- **main** or other branch: You're NOT in a worktree (ABORT)
+
+**If NOT in a worktree (not task/* branch)**:
+1. **STOP IMMEDIATELY** - Do not make ANY file changes
+2. **Report to orchestrator**: "ERROR: Frontend agent invoked outside worktree. Current branch: <branch_name>. Frontend work REQUIRES worktree isolation."
+3. **Exit** - Do not proceed with implementation
+
+**Rationale**:
+- Worktrees provide isolation to prevent concurrent task conflicts
+- Orchestrator should have created worktree as Step 0
+- Working outside worktree risks contaminating main branch
+- Multiple tasks could conflict without isolation
+
+**If IN a worktree (task/* branch)**: Proceed with workflow below
+
 ### 1. Understanding Requirements
 - Clarify objective: What needs to be built/modified?
 - Identify reference examples: Are there designs to reference?
@@ -191,17 +216,17 @@ Workflow:
 2. Test visually using Playwright MCP
 3. **Deploy frontend changes** (see Chat Frontend Deployment below)
 4. **Commit** with descriptive message
-5. **Merge to main branch if in worktree** (see below)
-6. Return summary
+5. Return summary
+
+**NOTE**: Merge to main is handled by git-merge agent (orchestrator invokes after validation)
 
 ### Chat Frontend Deployment
 
-**CRITICAL**: When modifying files in `telegram_bot/chat-frontend/src/`, you MUST deploy to `telegram_bot/static/chat/` for changes to take effect.
+**CRITICAL**: When modifying files in `monitoring/dashboard/src/`, you MUST deploy to `static/chat/` for changes to take effect.
 
 **Deployment process**:
 ```bash
-# From project root
-cd /Users/matifuentes/Workspace/agentlab
+# From project root (worktree or main)
 ./deploy.sh chat
 ```
 
@@ -210,6 +235,7 @@ cd /Users/matifuentes/Workspace/agentlab
 - Script handles: build, deployment, and server restart
 - Failure to deploy means changes won't be visible in browser
 - Script automatically restarts monitoring server
+- **Works from worktree**: Script handles path resolution
 
 **Files requiring deployment**:
 - `src/components/*.tsx` (React components)
@@ -226,13 +252,13 @@ cd /Users/matifuentes/Workspace/agentlab
 
 **Script features**:
 - Builds React app with production optimizations
-- Copies to `telegram_bot/static/chat/`
+- Copies to `static/chat/`
 - Restarts monitoring server automatically
 - Verifies server is listening on port 3000
 - Shows access URLs
 
 Commit message format:
-- Brief and specific: "Add responsive navigation bar to index.html"
+- Brief and specific: "Add responsive navigation bar to chat interface"
 - Standard footer:
   ```
   🤖 Generated with [Claude Code](https://claude.com/claude-code)
@@ -240,33 +266,21 @@ Commit message format:
   Co-Authored-By: Claude <noreply@anthropic.com>
   ```
 
-## Git Worktree & Merge Policy
+## Working in Worktrees
 
-**IMPORTANT**: You may be working in a git worktree (isolated branch for this task).
+**Context**: Frontend agent is ONLY invoked from worktrees (task/* branches) by orchestrator.
 
-**How to detect**:
-```bash
-git branch --show-current
-# If output is "task/<task_id>" → you're in a worktree
-```
+**Git behavior in worktrees**:
+- You're on branch `task/<task_id>` (verified at workflow start)
+- Commit changes to this task branch
+- **DO NOT manually merge** - git-merge agent handles merging to main
+- Worktree path: `/tmp/agentlab-worktrees/<task_id>`
 
-**If in a worktree (task/* branch)**:
-1. Commit your changes to the task branch (as usual)
-2. **Merge to main before completion**:
-   ```bash
-   git checkout main
-   git merge task/<task_id> --no-ff -m "Merge task/<task_id>: <brief description>
-
-   🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-   Co-Authored-By: Claude <noreply@anthropic.com>"
-   git checkout task/<task_id>
-   ```
-3. Verify merge succeeded
-
-**Why**: Worktrees are cleaned up after task completion. If you don't merge, your work is LOST.
-
-**If NOT in a worktree**: Just commit normally, no merge needed
+**Why worktree isolation**:
+- Prevents concurrent task conflicts
+- Allows parallel frontend/backend work
+- Clean separation of task changes
+- Safe rollback if issues occur
 
 ## Output Format
 
