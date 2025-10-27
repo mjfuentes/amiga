@@ -13,7 +13,6 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import toast, { Toaster } from 'react-hot-toast';
 import { Message as MessageType } from '../types';
-import { MonitoringDashboard } from './MonitoringDashboard';
 import './ChatInterface.css';
 
 interface ChatInterfaceProps {
@@ -23,8 +22,6 @@ interface ChatInterfaceProps {
   onClearChat: () => Promise<boolean>;
   onLogout: () => void;
 }
-
-type ViewMode = 'chat' | 'dashboard';
 
 // Available commands with descriptions
 const COMMANDS = [
@@ -44,7 +41,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onClearChat,
   onLogout,
 }) => {
-  const [viewMode, setViewMode] = useState<ViewMode>('chat');
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [showCommands, setShowCommands] = useState(false);
@@ -340,16 +336,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     });
   };
 
-  // Show dashboard view if selected
-  if (viewMode === 'dashboard') {
-    return (
-      <div className="chat-interface">
-        <Toaster />
-        <MonitoringDashboard onBack={() => setViewMode('chat')} />
-      </div>
-    );
-  }
-
   // Show landing page when no messages
   if (messages.length === 0) {
     return (
@@ -361,7 +347,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               src="/chat/amiga-logo.png"
               alt="AMIGA Logo"
               className="landing-logo clickable"
-              onClick={() => setViewMode('dashboard')}
+              onClick={() => window.open('/', '_blank')}
               title="View monitoring dashboard"
             />
             <div className="landing-input-wrapper">
@@ -404,7 +390,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             src="/chat/amiga-logo.png"
             alt="AMIGA"
             className="chat-logo clickable"
-            onClick={() => setViewMode('dashboard')}
+            onClick={() => window.open('/', '_blank')}
             title="View monitoring dashboard"
           />
         </div>
