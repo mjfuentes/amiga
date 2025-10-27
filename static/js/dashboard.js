@@ -62,8 +62,15 @@ function handleHashRouting() {
     const referrer = params.get('ref');
 
     // Check if it's a task link (format: task_<id> or just the hex ID)
+    let taskId = null;
     if (taskPart.startsWith('task_')) {
-        const taskId = taskPart.substring(5); // Remove 'task_' prefix
+        taskId = taskPart.substring(5); // Remove 'task_' prefix
+    } else if (taskPart && taskPart.length >= 6) {
+        // Assume it's a raw task ID (at least 6 hex chars)
+        taskId = taskPart;
+    }
+
+    if (taskId) {
         showTaskDetail(taskId, referrer);
         // Clear hash to prevent issues with browser back button
         history.replaceState(null, null, ' ');
