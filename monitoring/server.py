@@ -136,6 +136,12 @@ def verify_token(token: str) -> str | None:
     """Verify JWT token and return user_id, or None if invalid."""
     if not token:
         return None
+
+    # Support dummy tokens for NO_AUTH_MODE (development/testing)
+    if token.startswith("dummy-token-"):
+        user_id = token.replace("dummy-token-", "")
+        return user_id if user_id else None
+
     try:
         payload = pyjwt.decode(token, SECRET_KEY, algorithms=["HS256"])
         return payload.get("user_id")
@@ -793,9 +799,12 @@ def chat_clear():
     """Clear chat history for authenticated user."""
     try:
         token = request.headers.get("Authorization", "").replace("Bearer ", "")
+        logger.info(f"Clear chat request with token: {token[:20]}...")
         user_id = verify_token(token)
+        logger.info(f"Verified user_id: {user_id}")
 
         if not user_id:
+            logger.warning(f"Authorization failed for token: {token[:20]}...")
             return jsonify({"error": "Unauthorized"}), 401
 
         session_manager.clear_session(user_id)
