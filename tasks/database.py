@@ -1082,6 +1082,7 @@ class Database:
             SELECT timestamp, tool_name, duration_ms, success, error
             FROM tool_usage
             WHERE task_id = ?
+            ORDER BY timestamp ASC, id ASC
         """,
             (task_id,),
         )
@@ -1104,6 +1105,7 @@ class Database:
             SELECT timestamp, status, message
             FROM agent_status
             WHERE task_id = ?
+            ORDER BY timestamp ASC, id ASC
         """,
             (task_id,),
         )
