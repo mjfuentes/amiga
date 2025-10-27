@@ -45,12 +45,14 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
           setConnected(true);
         };
 
-        eventSource.addEventListener('metrics_update', (event) => {
+        eventSource.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-            if (data.tasks) {
+            // SSE sends: { overview: { task_statistics: { recent_24h: { tasks: [...] } } } }
+            const tasks = data?.overview?.task_statistics?.recent_24h?.tasks;
+            if (tasks && Array.isArray(tasks)) {
               // Filter to show only active tasks (running or pending)
-              const activeTasks = data.tasks.filter(
+              const activeTasks = tasks.filter(
                 (task: Task) => task.status === 'running' || task.status === 'pending'
               );
               setTasks(activeTasks);
@@ -58,7 +60,7 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
           } catch (error) {
             console.error('Failed to parse SSE data:', error);
           }
-        });
+        };
 
         eventSource.onerror = (error) => {
           console.error('SSE connection error:', error);
