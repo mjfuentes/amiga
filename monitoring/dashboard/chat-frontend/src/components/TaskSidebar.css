@@ -283,3 +283,97 @@
     transform: none;
   }
 }
+
+/* Tool usage container */
+.tool-usage-container {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Subagent group styling */
+.subagent-group {
+  background: rgba(106, 159, 181, 0.08);
+  border: 1px solid rgba(106, 159, 181, 0.3);
+  border-left: 3px solid #6a9fb5;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.subagent-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(106, 159, 181, 0.2);
+}
+
+.subagent-icon {
+  font-size: 1.125rem;
+}
+
+.subagent-name {
+  flex: 1;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #6a9fb5;
+  font-family: ui-monospace, 'SF Mono', monospace;
+}
+
+.subagent-status {
+  font-size: 0.875rem;
+  color: #7cb342;
+}
+
+.subagent-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding-left: 0.5rem;
+}
+
+/* Individual tool item */
+.tool-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  transition: background 0.2s ease;
+}
+
+.tool-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.tool-item.success {
+  border-left: 2px solid #7cb342;
+}
+
+.tool-item.error {
+  border-left: 2px solid #f87171;
+}
+
+.tool-item.pending {
+  border-left: 2px solid #888;
+}
+
+.tool-icon {
+  font-size: 0.875rem;
+}
+
+.tool-name {
+  flex: 1;
+  color: #d0d0d0;
+  font-family: ui-monospace, 'SF Mono', monospace;
+}
+
+.tool-duration {
+  color: #888;
+  font-size: 0.6875rem;
+  font-family: ui-monospace, 'SF Mono', monospace;
+}

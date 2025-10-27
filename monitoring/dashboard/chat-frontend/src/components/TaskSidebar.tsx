@@ -21,6 +21,14 @@ interface ToolUsage {
   duration_ms?: number;
   success: boolean;
   error?: string;
+  parameters?: string; // JSON string with subagent_type for Task tools
+}
+
+interface SubagentGroup {
+  subagent_type: string;
+  tools: ToolUsage[];
+  start_time: string;
+  end_time?: string;
 }
 
 interface TaskSidebarProps {
@@ -140,6 +148,128 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
     window.location.href = `/dashboard#${taskId}?ref=chat`;
   };
 
+  // Group tools by subagent sessions
+  const groupToolsBySubagent = (tools: ToolUsage[]): (SubagentGroup | ToolUsage)[] => {
+    const result: (SubagentGroup | ToolUsage)[] = [];
+    let currentGroup: SubagentGroup | null = null;
+
+    for (const tool of tools) {
+      // Check if this is a Task tool (subagent delegation)
+      if (tool.tool_name === 'Task') {
+        try {
+          const params = tool.parameters ? JSON.parse(tool.parameters) : null;
+          const subagentType = params?.subagent_type;
+
+          if (subagentType) {
+            // Start a new subagent group
+            if (currentGroup) {
+              // Close previous group
+              result.push(currentGroup);
+            }
+            currentGroup = {
+              subagent_type: subagentType,
+              tools: [tool],
+              start_time: tool.timestamp,
+            };
+          } else if (currentGroup) {
+            // Task completion (no subagent_type means end of delegation)
+            currentGroup.end_time = tool.timestamp;
+            currentGroup.tools.push(tool);
+            result.push(currentGroup);
+            currentGroup = null;
+          } else {
+            // Standalone Task tool
+            result.push(tool);
+          }
+        } catch (e) {
+          // Invalid JSON in parameters, treat as standalone tool
+          if (currentGroup) {
+            currentGroup.tools.push(tool);
+          } else {
+            result.push(tool);
+          }
+        }
+      } else {
+        // Regular tool
+        if (currentGroup) {
+          // Add to current subagent group
+          currentGroup.tools.push(tool);
+        } else {
+          // Standalone tool
+          result.push(tool);
+        }
+      }
+    }
+
+    // Close any remaining open group
+    if (currentGroup) {
+      result.push(currentGroup);
+    }
+
+    return result;
+  };
+
+  const renderToolIcon = (toolName: string) => {
+    const icons: { [key: string]: string } = {
+      Read: '📖',
+      Write: '✍️',
+      Edit: '✏️',
+      Bash: '⚡',
+      Grep: '🔍',
+      Glob: '📂',
+      Task: '🔄',
+    };
+    return icons[toolName] || '🔧';
+  };
+
+  const renderTool = (tool: ToolUsage, index: number) => {
+    const icon = renderToolIcon(tool.tool_name);
+    const statusClass = tool.success ? 'success' : tool.error ? 'error' : 'pending';
+
+    return (
+      <div key={index} className={`tool-item ${statusClass}`}>
+        <span className="tool-icon">{icon}</span>
+        <span className="tool-name">{tool.tool_name}</span>
+        {tool.duration_ms !== undefined && tool.duration_ms !== null && (
+          <span className="tool-duration">{Math.round(tool.duration_ms)}ms</span>
+        )}
+      </div>
+    );
+  };
+
+  const renderSubagentGroup = (group: SubagentGroup, index: number) => {
+    return (
+      <div key={`group-${index}`} className="subagent-group">
+        <div className="subagent-header">
+          <span className="subagent-icon">🤖</span>
+          <span className="subagent-name">{group.subagent_type}</span>
+          <span className="subagent-status">{group.end_time ? '✓' : '⏳'}</span>
+        </div>
+        <div className="subagent-tools">
+          {group.tools.slice(1).map((tool, idx) => renderTool(tool, idx))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderToolUsage = (toolUsage: ToolUsage[]) => {
+    const grouped = groupToolsBySubagent(toolUsage);
+
+    return (
+      <div className="tool-usage-container">
+        {grouped.map((item, index) => {
+          if ('subagent_type' in item) {
+            // SubagentGroup
+            return renderSubagentGroup(item, index);
+          } else {
+            // Standalone ToolUsage
+            return renderTool(item, index);
+          }
+        })}
+      </div>
+    );
+  };
+
   if (!visible) return null;
 
   // Filter tasks based on selected filter
@@ -212,10 +342,7 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
                   <span className="task-time">{formatTimestamp(task.updated_at)}</span>
                 </div>
                 {task.tool_usage && task.tool_usage.length > 0 && (
-                  <div className="task-tools">
-                    <span className="tools-label">Tools:</span>
-                    <span className="tools-count">{task.tool_usage.length}</span>
-                  </div>
+                  renderToolUsage(task.tool_usage)
                 )}
               </div>
             ))}
