@@ -272,7 +272,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         <Toaster />
         <div className="landing-container">
           <div className="landing-content">
-            <img src="/amiga-logo.png" alt="AMIGA Logo" className="landing-logo" />
+            <img src="/chat/amiga-logo.png" alt="AMIGA Logo" className="landing-logo" />
             <div className="landing-input-wrapper">
               {showCommands && filteredCommands.length > 0 && (
                 <div className="command-suggestions">
@@ -309,7 +309,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       <Toaster />
       <div className="chat-header">
         <div className="chat-title">
-          <img src="/amiga-logo.png" alt="AMIGA" className="chat-logo" />
+          <img src="/chat/amiga-logo.png" alt="AMIGA" className="chat-logo" />
         </div>
       </div>
 
@@ -345,7 +345,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                       )}
                       {msg.role === 'assistant' && (
                         <div className="assistant-avatar" aria-label="Assistant message">
-                          <img src="/amiga-logo.png" alt="AI" className="avatar-logo" />
+                          <img src="/chat/amiga-logo.png" alt="AI" className="avatar-logo" />
                         </div>
                       )}
                       <span className="message-time">{formatTime(msg.timestamp)}</span>
