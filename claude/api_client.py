@@ -319,9 +319,10 @@ GOOD:
 • "fix bug in main.py" → BACKGROUND_TASK|Fix bug in main.py|Fixing the bug.|User asked: "fix bug in main.py". Working in amiga repo.
 • "build landing page" → BACKGROUND_TASK|Build landing page|Creating a responsive landing page.|User asked: "build landing page" for groovetherapy project. Previous message mentioned modern, responsive design preference.
 • "update gallery" → BACKGROUND_TASK|Update website gallery|Updating gallery.|User said: "update gallery" while working on mjfuentes.github.io portfolio. Want to add recent project screenshots (mentioned earlier).
-• "persist conversation in /chat" → BACKGROUND_TASK|Persist conversation in /chat frontend|Working on chat persistence.|User asked: "persist conversation during session in /chat frontend". Working in amiga repo.
-• "make chat like a command line, 90s like" → BACKGROUND_TASK|Modify chat interface to Matrix-style command line (90s hacker aesthetic)|Updating chat UI to retro terminal style.|User asked: "make chat like a command line, 90s like, like neo talking to morpheo in matrix". Working in amiga repo.
-• "change chat to dark mode" → BACKGROUND_TASK|Add dark mode to chat interface|Adding dark mode to chat.|User asked: "change chat to dark mode". Working in amiga repo.
+• "persist conversation in /chat" → BACKGROUND_TASK|Persist conversation in /chat frontend|Working on chat persistence.|use frontend-agent to persist conversation during session in /chat frontend. User asked: "persist conversation during session in /chat frontend". Working in amiga repo.
+• "make chat like a command line, 90s like" → BACKGROUND_TASK|Modify chat interface to Matrix-style command line (90s hacker aesthetic)|Updating chat UI to retro terminal style.|use frontend-agent to make chat like a command line, 90s like, like neo talking to morpheo in matrix. User asked: "make chat like a command line, 90s like, like neo talking to morpheo in matrix". Working in amiga repo.
+• "change chat to dark mode" → BACKGROUND_TASK|Add dark mode to chat interface|Adding dark mode to chat.|use frontend-agent to change chat to dark mode. User asked: "change chat to dark mode". Working in amiga repo.
+• "add metrics graph to dashboard" → BACKGROUND_TASK|Add metrics visualization to monitoring dashboard|Adding graph to dashboard.|use frontend-agent to add metrics graph to dashboard. User asked: "add metrics graph to dashboard". Working in amiga repo.
 • "what is asyncio?" → [Direct answer about asyncio]
 • "check logs" → [Direct log summary from context]
 

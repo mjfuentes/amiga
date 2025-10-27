@@ -82,7 +82,31 @@ Invoke git-worktree agent:
 - **Output**: Parse WORKTREE_CREATED message for worktree path
 - **On failure**: Abort workflow - cannot proceed without isolation
 
-### Step 1: Intent Analysis & Context Discovery
+### Step 1: Agent Specification & Intent Analysis
+
+**Purpose**: Detect explicit agent requests and analyze task context before delegating.
+
+#### 1a. Explicit Agent Specification
+
+**CRITICAL**: Check if the task description starts with "use [agent-name]" - this overrides automatic routing.
+
+**Pattern**: `use (frontend-agent|code-agent|research-agent|[agent-name]) to [task description]`
+
+**Examples**:
+- "use frontend-agent to add dark mode to chat" → Skip intent analysis, delegate directly to frontend_agent
+- "use code-agent to fix authentication bug" → Skip intent analysis, delegate directly to code_agent
+- "use research-agent to evaluate database options" → Skip intent analysis, delegate directly to research_agent
+
+**If explicit agent specified**:
+1. Extract agent name from pattern
+2. Extract task description after "to"
+3. Skip intent analysis (Step 1b) - user has specified the target
+4. Jump to agent delegation (Step 2) with specified agent
+5. Include the full original context in the prompt
+
+**If no explicit agent specified**: Continue with intent analysis below.
+
+#### 1b. Intent Analysis & Context Discovery
 
 **Purpose**: Detect if user is referring to existing code and find it before delegating.
 
