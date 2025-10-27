@@ -828,9 +828,22 @@ async function showTaskDetail(taskId) {
         // Fetch screenshots
         await loadScreenshots(taskId, 'task');
 
-        // Render activity log
+        // Render activity log - combine consecutive identical messages
         if (task.activity_log && task.activity_log.length > 0) {
-            document.getElementById('taskActivityLog').innerHTML = task.activity_log.map(entry => `
+            // Combine consecutive identical messages
+            const combined = [];
+            let prev = null;
+
+            for (const entry of task.activity_log) {
+                if (prev && prev.message === entry.message) {
+                    // Same as previous, skip it
+                    continue;
+                }
+                combined.push(entry);
+                prev = entry;
+            }
+
+            document.getElementById('taskActivityLog').innerHTML = combined.map(entry => `
                 <div class="tool-item" style="margin-bottom: 0.5rem;">
                     <div>
                         <div class="tool-stats">${new Date(entry.timestamp).toLocaleString()}</div>
