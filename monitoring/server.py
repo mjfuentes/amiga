@@ -1017,6 +1017,91 @@ def stop_task(task_id):
         return jsonify({"error": f"Failed to stop task: {str(e)}"}), 500
 
 
+@app.route("/api/tasks/<task_id>/revert", methods=["POST"])
+def revert_task(task_id):
+    """
+    Create a revert task for the specified task ID.
+    
+    This endpoint is public (no auth required) to allow dashboard monitoring
+    usage, similar to the stop endpoint.
+    
+    Args:
+        task_id: The ID of the task to revert
+    
+    Returns:
+        201: Task created successfully with task_id
+        400: Invalid request (task not found or not completed)
+        500: Internal server error
+    """
+    try:
+        logger.info(f"Revert request received for task {task_id}")
+        
+        # Get the original task to verify it exists and get context
+        task = task_manager.get_task(task_id)
+        if not task:
+            return jsonify({"error": f"Task {task_id} not found"}), 404
+        
+        # Only allow reverting completed tasks
+        if task.status != "completed":
+            return jsonify({"error": f"Can only revert completed tasks (current status: {task.status})"}), 400
+        
+        # Use a default user_id for dashboard-initiated reverts
+        # In production, you might want to use a service account user_id
+        user_id = task.user_id  # Use the same user_id as the original task
+        
+        # Create revert task using asyncio
+        global _agent_pool_loop
+        if _agent_pool_loop is None:
+            return jsonify({"error": "Server not ready - agent pool not started"}), 503
+        
+        async def create_and_submit_revert_task():
+            """Create revert task and submit to agent pool"""
+            # Create revert task in database
+            revert_description = f"Revert the changes made in task {task_id}"
+            revert_context = f"User requested to revert changes from task ID: {task_id}. Original task: {task.description[:200]}"
+            
+            revert_task = await task_manager.create_task(
+                user_id=user_id,
+                description=revert_description,
+                workspace=task.workspace,  # Use same workspace as original task
+                model="sonnet",  # Use sonnet for revert operations
+                agent_type="orchestrator",  # Use orchestrator to handle complex reverts
+                context=revert_context,
+            )
+            
+            # Submit task to agent pool for execution
+            await agent_pool.submit(
+                _execute_web_chat_task,
+                revert_task,
+                user_id,
+                priority=TaskPriority.HIGH,
+            )
+            
+            return revert_task
+        
+        # Execute in agent pool's event loop
+        future = asyncio.run_coroutine_threadsafe(create_and_submit_revert_task(), _agent_pool_loop)
+        revert_task_obj = future.result(timeout=30)  # 30s timeout for task creation
+        
+        logger.info(f"API: Created revert task {revert_task_obj.task_id} for original task {task_id}")
+        
+        return jsonify({
+            "task_id": revert_task_obj.task_id,
+            "status": "pending",
+            "message": f"Revert task created for task {task_id}",
+            "original_task_id": task_id,
+        }), 201
+        
+    except asyncio.TimeoutError:
+        logger.error(f"Timeout creating revert task for {task_id}", exc_info=True)
+        return jsonify({"error": "Task creation timed out"}), 504
+    except Exception as e:
+        logger.error(f"Error creating revert task for {task_id}: {e}", exc_info=True)
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+
+
+
+
 @app.route("/api/tasks", methods=["POST"])
 def create_task():
     """
