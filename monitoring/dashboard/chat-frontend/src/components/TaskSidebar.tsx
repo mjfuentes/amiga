@@ -138,8 +138,10 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
   };
 
   const handleTaskClick = (taskId: string) => {
+    // Normalize task ID format (ensure it has task_ prefix)
+    const urlTaskId = taskId.startsWith('task_') ? taskId : `task_${taskId}`;
     // Navigate to monitoring dashboard with task highlighted and referrer info
-    window.location.href = `/dashboard#${taskId}?ref=chat`;
+    window.location.href = `/dashboard#${urlTaskId}?ref=sidebar`;
   };
 
   if (!visible) return null;
