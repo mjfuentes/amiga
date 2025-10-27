@@ -871,6 +871,10 @@ async function showTaskDetail(taskId) {
     document.getElementById('taskToolUsage').innerHTML = '<div class="no-data">Loading...</div>';
     document.getElementById('taskActivityLog').innerHTML = '<div class="no-data">Loading...</div>';
 
+    // Hide revert button initially
+    const revertBtn = document.getElementById('modalRevertBtn');
+    revertBtn.style.display = 'none';
+
     try {
         // Fetch task details
         const task = await fetchWithErrorHandling(`/api/tasks/${taskId}`);
@@ -879,6 +883,13 @@ async function showTaskDetail(taskId) {
         currentTaskStatus = task.status;
 
         document.getElementById('modalTaskSubtitle').textContent = task.description;
+
+        // Show revert button only for completed tasks
+        if (task.status === 'completed') {
+            revertBtn.style.display = 'flex';
+            revertBtn.disabled = false;
+            revertBtn.innerHTML = '<span>↶</span><span>Revert</span>';
+        }
 
         // Fetch screenshots
         await loadScreenshots(taskId, 'task');
@@ -1548,6 +1559,87 @@ function closeTaskModal() {
     document.getElementById('taskModal').classList.remove('active');
     currentTaskId = null;
     currentTaskStatus = null;
+}
+
+async function revertTask() {
+    if (!currentTaskId) {
+        console.error('No task ID available for revert');
+        return;
+    }
+
+    const revertBtn = document.getElementById('modalRevertBtn');
+    const originalText = revertBtn.innerHTML;
+
+    // Disable button and show loading state
+    revertBtn.disabled = true;
+    revertBtn.innerHTML = '<span>⏳</span><span>Creating...</span>';
+
+    try {
+        // Create revert task via API
+        const response = await fetch('/api/tasks', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                prompt: `Revert the changes made in task ${currentTaskId}`,
+                workspace: '/Users/matifuentes/Workspace/amiga',
+                model: 'sonnet',
+                agent_type: 'orchestrator',
+                context: `User requested to revert changes from task ID: ${currentTaskId}`
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to create revert task: ${response.statusText}`);
+        }
+
+        const result = await response.json();
+
+        // Show success notification
+        showNotification(`Revert task created: #${result.task_id}`, 'success');
+
+        // Close modal and refresh task list
+        closeTaskModal();
+        await fetchUnifiedData();
+
+    } catch (error) {
+        console.error('Error creating revert task:', error);
+        showNotification('Failed to create revert task', 'error');
+
+        // Restore button state
+        revertBtn.disabled = false;
+        revertBtn.innerHTML = originalText;
+    }
+}
+
+function showNotification(message, type = 'info') {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.textContent = message;
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 1rem 1.5rem;
+        background: ${type === 'error' ? 'rgba(239, 68, 68, 0.9)' : 'rgba(34, 197, 94, 0.9)'};
+        color: white;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        z-index: 10000;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        animation: slideIn 0.3s ease;
+    `;
+
+    document.body.appendChild(notification);
+
+    // Remove after 3 seconds
+    setTimeout(() => {
+        notification.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => notification.remove(), 300);
+    }, 3000);
 }
 
 function showErrorsModal() {
