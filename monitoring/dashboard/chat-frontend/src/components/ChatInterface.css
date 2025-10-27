@@ -5,6 +5,26 @@
   background: #0a0a0a;
 }
 
+/* Shutdown animation */
+.chat-interface.shutting-down {
+  animation: shutdownFade 0.6s ease-out forwards;
+}
+
+@keyframes shutdownFade {
+  0% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+  50% {
+    opacity: 0.5;
+    filter: brightness(0.5);
+  }
+  100% {
+    opacity: 0;
+    filter: brightness(0);
+  }
+}
+
 /* Landing page styles */
 .chat-interface.landing {
   position: relative;
@@ -487,6 +507,10 @@
 .cs-main-container {
   background: #0a0a0a !important;
   font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Monaco, 'Courier New', monospace !important;
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
 }
 
 /* Chat container */
@@ -495,12 +519,19 @@
   max-width: 900px;
   margin: 0 auto;
   position: relative !important;
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  width: 100% !important;
 }
 
 /* Message list - COMPACT */
 .cs-message-list {
   background: #0a0a0a !important;
   padding: 0.5rem 1rem !important;
+  flex: 1 !important;
+  overflow-y: auto !important;
 }
 
 /* Message group wrapper - MINIMAL SPACING */
@@ -580,6 +611,8 @@
   max-width: 100% !important;
   margin: 0 !important;
   width: 100% !important;
+  flex: 0 0 auto !important;
+  flex-shrink: 0 !important;
 }
 
 /* Remove the chatscope wrapper's background */
@@ -926,6 +959,8 @@
 .input-wrapper-with-suggestions {
   position: relative;
   width: 100%;
+  flex: 0 0 auto !important;
+  flex-shrink: 0 !important;
 }
 
 /* Command suggestions dropdown */
