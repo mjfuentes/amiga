@@ -617,11 +617,7 @@
   background: transparent !important;
 }
 
-/* Outgoing messages (user) - COMPACT, LEFT-ALIGNED */
-.cs-message--outgoing {
-  justify-content: flex-start !important; /* Force left alignment */
-}
-
+/* Outgoing messages (user) - COMPACT */
 .cs-message--outgoing .cs-message__content {
   background: transparent !important;
   color: #d0d0d0 !important;
@@ -632,8 +628,6 @@
   transition: all 0.15s ease !important;
   font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Monaco, 'Courier New', monospace !important;
   box-shadow: none !important;
-  margin-left: 0 !important; /* Remove any left margin that pushes right */
-  margin-right: auto !important; /* Push to left side */
 }
 
 .cs-message--outgoing .cs-message__content:hover {
