@@ -370,10 +370,7 @@ function appendToolExecutionToModal(toolData) {
     const scrollContainer = document.getElementById('toolTimelineScroll');
     if (!scrollContainer) return;
 
-    // Save scroll state
-    const wasAtBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop <= scrollContainer.clientHeight + 50;
-
-    // Build tool call entry HTML
+    // Build tool call entry
     const toolCall = {
         tool: toolData.tool_name,
         timestamp: toolData.timestamp,
@@ -381,8 +378,25 @@ function appendToolExecutionToModal(toolData) {
         output_preview: toolData.error ? JSON.stringify({ error: toolData.error }) : toolData.output_preview,
         output_length: toolData.output_preview ? toolData.output_preview.length : 0,
         parameters: toolData.parameters || {},
-        status: toolData.status || 'completed'  // Pass through status (running/completed)
+        status: toolData.status || 'completed'
     };
+
+    // Check if last call is identical (deduplication)
+    const lastCallElement = scrollContainer.querySelector('.tool-call-entry:last-child');
+    if (lastCallElement) {
+        const lastToolAttr = lastCallElement.getAttribute('data-tool');
+        const lastParamsAttr = lastCallElement.getAttribute('data-params');
+
+        const currentParams = JSON.stringify(toolCall.parameters);
+
+        // Skip if identical to previous
+        if (lastToolAttr === toolCall.tool && lastParamsAttr === currentParams) {
+            return;
+        }
+    }
+
+    // Save scroll state
+    const wasAtBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop <= scrollContainer.clientHeight + 50;
 
     // Get current tool count
     const currentCalls = scrollContainer.querySelectorAll('.tool-call-entry').length;
@@ -953,8 +967,24 @@ function renderTaskToolUsage(toolData) {
 
     // Terminal body (expanded by default)
     const toolCalls = toolData.tool_calls || [];
+
+    // Deduplicate consecutive identical tool calls
+    const recentCalls = toolCalls.slice(-TOOL_CALLS_LIMIT);
+    const dedupedCalls = [];
+    let prev = null;
+
+    for (const call of recentCalls) {
+        // Check if this call is identical to previous (same tool + same parameters)
+        if (prev && prev.tool === call.tool && JSON.stringify(prev.parameters) === JSON.stringify(call.parameters)) {
+            // Skip consecutive duplicate
+            continue;
+        }
+        dedupedCalls.push(call);
+        prev = call;
+    }
+
     html += '<div class="terminal-body expanded" id="toolTimelineScroll">';
-    html += toolCalls.slice(-TOOL_CALLS_LIMIT).map((call, index) => {
+    html += dedupedCalls.map((call, index) => {
         return renderTerminalToolCall(call, index + 1);
     }).join('');
     html += '</div>';
@@ -1338,8 +1368,9 @@ function renderTerminalToolCall(call, lineNumber) {
     }
 
     // Build HTML - white text with colored highlights for key info
-    let html = `<div class="tool-call-entry" style="padding: 0.125rem 0; line-height: 1.3; color: #e6edf3;">`;
-    
+    const paramsJson = JSON.stringify(parameters);
+    let html = `<div class="tool-call-entry" data-tool="${escapeHtml(tool)}" data-params="${escapeHtml(paramsJson)}" style="padding: 0.125rem 0; line-height: 1.3; color: #e6edf3;">`;
+
     html += summaryText;
     
     if (timingInfo) {
