@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # Minimum required free space in GB
-MIN_FREE_SPACE_GB=15
+MIN_FREE_SPACE_GB=2
 
 check_disk_space() {
     echo "🔍 Checking disk space..."
