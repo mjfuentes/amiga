@@ -804,6 +804,10 @@ def chat_clear():
             return jsonify({"error": "Unauthorized"}), 401
 
         session_manager.clear_session(user_id)
+
+        # Emit clear_chat event to frontend via WebSocket
+        socketio.emit('clear_chat', {'success': True}, room=str(user_id))
+
         return jsonify({"success": True})
 
     except Exception as e:
