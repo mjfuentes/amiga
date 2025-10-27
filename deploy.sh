@@ -8,13 +8,76 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Minimum required free space in GB
+MIN_FREE_SPACE_GB=15
+
+check_disk_space() {
+    echo "🔍 Checking disk space..."
+
+    # Get available space in GB (works on macOS and Linux)
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS: df -g shows gigabytes
+        AVAIL_GB=$(df -g "$SCRIPT_DIR" | tail -1 | awk '{print $4}')
+    else
+        # Linux: df -BG shows gigabytes
+        AVAIL_GB=$(df -BG "$SCRIPT_DIR" | tail -1 | awk '{print $4}' | sed 's/G//')
+    fi
+
+    echo "   Available: ${AVAIL_GB}GB"
+    echo "   Required:  ${MIN_FREE_SPACE_GB}GB"
+
+    if [ "$AVAIL_GB" -lt "$MIN_FREE_SPACE_GB" ]; then
+        echo ""
+        echo "❌ INSUFFICIENT DISK SPACE"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "Only ${AVAIL_GB}GB available, need at least ${MIN_FREE_SPACE_GB}GB"
+        echo ""
+        echo "📝 Cleanup recommendations:"
+        echo "   1. Clear npm cache:     npm cache clean --force"
+        echo "   2. Remove old builds:   rm -rf monitoring/dashboard/chat-frontend/build"
+        echo "   3. Clean Docker:        docker system prune -a"
+        echo "   4. Clear system cache:  sudo periodic daily weekly monthly"
+        echo "   5. Check logs:          du -sh logs/"
+        echo ""
+        echo "💾 Check space usage:"
+        echo "   du -sh */ | sort -h"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        exit 1
+    fi
+
+    echo "✅ Sufficient disk space available"
+    echo ""
+}
+
 deploy_chat() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "📦 Building chat-frontend..."
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
     cd monitoring/dashboard/chat-frontend
-    npm run build
+
+    # Check if node_modules exists, if not, warn about disk space
+    if [ ! -d "node_modules" ]; then
+        echo "⚠️  node_modules not found - running npm install"
+        echo "   This requires ~250MB disk space"
+        npm install || {
+            echo ""
+            echo "❌ npm install failed"
+            echo "   This is often caused by insufficient disk space"
+            echo "   Check available space: df -h ."
+            exit 1
+        }
+    fi
+
+    npm run build || {
+        echo ""
+        echo "❌ Build failed"
+        echo "   Common causes:"
+        echo "   - Insufficient disk space"
+        echo "   - Corrupted node_modules (try: rm -rf node_modules && npm install)"
+        echo "   - Build cache issues (try: rm -rf build)"
+        exit 1
+    }
 
     echo ""
     echo "🚀 Deploying to static/chat/..."
@@ -117,6 +180,9 @@ show_usage() {
 
 # Main execution
 COMPONENT="${1:-all}"
+
+# Check disk space before starting
+check_disk_space
 
 case "$COMPONENT" in
     chat)
