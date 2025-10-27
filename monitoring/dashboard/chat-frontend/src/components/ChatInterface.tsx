@@ -215,12 +215,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       parts.push(
         <a
           key={`task-${taskId}-${match.index}`}
-          href={`http://localhost:3000#${urlTaskId}`}
+          href={`http://localhost:3000/#${urlTaskId}`}
           className="task-link"
           onClick={(e) => {
             e.preventDefault();
             // Open monitoring dashboard in new tab and navigate to task
-            window.open(`http://localhost:3000#${urlTaskId}`, '_blank');
+            window.open(`http://localhost:3000/#${urlTaskId}`, '_blank');
           }}
           title={`View task ${taskId} in monitoring dashboard`}
         >
@@ -309,7 +309,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             ))}
           </div>
         ), {
-          duration: 8000,
+          duration: 4000,
           position: 'top-center',
           style: {
             background: '#2a2a2a',
