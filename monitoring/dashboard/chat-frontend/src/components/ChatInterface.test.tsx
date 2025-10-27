@@ -32,6 +32,8 @@ describe('ChatInterface Input Highlighting', () => {
     onSendMessage: jest.fn(),
     onClearChat: jest.fn().mockResolvedValue(true),
     onLogout: jest.fn(),
+    chatViewActive: false,
+    setChatViewActive: jest.fn(),
   };
 
   beforeEach(() => {
