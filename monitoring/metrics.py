@@ -66,19 +66,20 @@ class MetricsAggregator:
 
         recent_tasks = []
         for row in cursor.fetchall():
-            recent_tasks.append(
-                {
-                    "task_id": row[0],
-                    "user_id": row[1],
-                    "description": row[2][:100],
-                    "status": row[3],
-                    "created_at": row[4],
-                    "updated_at": row[5],
-                    "model": row[6],
-                    "agent_type": row[7],
-                    "last_agent_type": row[8],
-                }
-            )
+            task_dict = {
+                "task_id": row[0],
+                "user_id": row[1],
+                "description": row[2][:100],
+                "status": row[3],
+                "created_at": row[4],
+                "updated_at": row[5],
+                "model": row[6],
+                "agent_type": row[7],
+                "last_agent_type": row[8],
+            }
+            # Add tool usage for each task
+            task_dict["tool_usage"] = self.get_tool_usage_for_task(row[0])
+            recent_tasks.append(task_dict)
 
         return {
             "total_tasks": stats["total"],
@@ -91,6 +92,32 @@ class MetricsAggregator:
                 "tasks": recent_tasks,
             },
         }
+
+    def get_tool_usage_for_task(self, task_id: str) -> list[dict[str, Any]]:
+        """Get tool usage for a specific task (pretool hooks only)"""
+        cursor = self.task_manager.db.conn.cursor()
+        cursor.execute(
+            """
+            SELECT tool_name, timestamp, duration_ms, success, error, parameters
+            FROM tool_usage
+            WHERE task_id = ? AND success IS NULL
+            ORDER BY timestamp ASC
+            """,
+            (task_id,),
+        )
+
+        tool_usage = []
+        for row in cursor.fetchall():
+            tool_usage.append({
+                "tool_name": row[0],
+                "timestamp": row[1],
+                "duration_ms": row[2],
+                "success": bool(row[3]) if row[3] is not None else None,
+                "error": row[4],
+                "parameters": row[5],
+            })
+
+        return tool_usage
 
     def get_tool_usage_metrics(self, hours: int = 24) -> dict[str, Any]:
         """Get tool usage statistics from Claude Code hooks"""
