@@ -398,7 +398,7 @@ function appendToolExecutionToModal(toolData) {
     const toolCall = {
         tool: toolData.tool_name,
         timestamp: toolData.timestamp,
-        has_error: !toolData.success,
+        has_error: toolData.success === false,  // Only true if explicitly failed (not null/undefined for running)
         output_preview: toolData.error ? JSON.stringify({ error: toolData.error }) : toolData.output_preview,
         output_length: toolData.output_preview ? toolData.output_preview.length : 0,
         parameters: toolData.parameters || {},
