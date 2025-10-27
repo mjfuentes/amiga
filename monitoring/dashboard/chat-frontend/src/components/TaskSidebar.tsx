@@ -31,6 +31,18 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [connected, setConnected] = useState(false);
   const [filter, setFilter] = useState<'active' | 'completed'>('active');
+  const [, setTick] = useState(0); // Force re-render for time updates
+
+  // Update time display every 30 seconds
+  useEffect(() => {
+    if (!visible) return;
+
+    const interval = setInterval(() => {
+      setTick(prev => prev + 1);
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [visible]);
 
   useEffect(() => {
     if (!visible) return;
@@ -92,30 +104,54 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
   };
 
   const formatTimestamp = (timestamp: string) => {
-    // Parse ISO timestamp (handle formats like "2025-10-16T23:11:15.782996" without timezone)
-    // Ensure proper ISO format by appending 'Z' if no timezone info present
-    let isoTimestamp = timestamp;
-    if (timestamp && !timestamp.includes('Z') && !timestamp.includes('+') && !timestamp.includes('-', 10)) {
-      isoTimestamp = timestamp + 'Z';
-    }
-
-    const date = new Date(isoTimestamp);
-
-    // Validate date
-    if (isNaN(date.getTime())) {
-      console.error('Invalid timestamp:', timestamp);
+    if (!timestamp) {
       return 'unknown';
     }
 
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
+    try {
+      // Parse ISO timestamp - handle SQLite format "2025-10-16 23:11:15.782996"
+      // or ISO format "2025-10-16T23:11:15.782996"
+      let isoTimestamp = timestamp.trim();
 
-    if (diffMins < 1) return 'just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      // Replace space with 'T' if needed for proper ISO format
+      isoTimestamp = isoTimestamp.replace(' ', 'T');
+
+      // If no timezone info, assume UTC and append 'Z'
+      if (!isoTimestamp.includes('Z') && !isoTimestamp.includes('+') && !isoTimestamp.match(/[-+]\d{2}:\d{2}$/)) {
+        isoTimestamp = isoTimestamp + 'Z';
+      }
+
+      const date = new Date(isoTimestamp);
+
+      // Validate date
+      if (isNaN(date.getTime())) {
+        console.error('Invalid timestamp:', timestamp, 'parsed as:', isoTimestamp);
+        return 'unknown';
+      }
+
+      const now = new Date();
+      const diffMs = now.getTime() - date.getTime();
+      const diffSecs = Math.floor(diffMs / 1000);
+      const diffMins = Math.floor(diffSecs / 60);
+      const diffHours = Math.floor(diffMins / 60);
+      const diffDays = Math.floor(diffHours / 24);
+
+      // Handle negative differences (future timestamps - shouldn't happen but be defensive)
+      if (diffMs < 0) {
+        console.warn('Future timestamp detected:', timestamp);
+        return 'just now';
+      }
+
+      if (diffSecs < 10) return 'just now';
+      if (diffMins < 1) return `${diffSecs}s ago`;
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffDays < 7) return `${diffDays}d ago`;
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } catch (error) {
+      console.error('Error formatting timestamp:', timestamp, error);
+      return 'unknown';
+    }
   };
 
   const getStatusColor = (status: string) => {
