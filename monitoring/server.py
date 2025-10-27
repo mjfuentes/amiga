@@ -1,7 +1,3 @@
-import eventlet
-
-eventlet.monkey_patch()
-
 """
 Flask-based monitoring server for bot metrics
 Provides web UI and REST API for real-time metrics with SSE support
@@ -58,8 +54,8 @@ app.config["SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "dev-secret-change-in-pro
 allowed_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3001").split(",")
 CORS(app, origins=allowed_origins, supports_credentials=True)
 
-# Initialize SocketIO
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet", logger=False, engineio_logger=False)
+# Initialize SocketIO (using threading mode to avoid eventlet RLock issues)
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading", logger=False, engineio_logger=False)
 
 # Initialize tracking systems (determine data paths based on where we're running from)
 # Use centralized config helper functions for CWD-relative paths
@@ -3068,7 +3064,7 @@ def run_server(host: str = "0.0.0.0", port: int = 3000, debug: bool = False):  #
     logger.info("Agent pool ready")
 
     try:
-        socketio.run(app, host=host, port=port, debug=debug)
+        socketio.run(app, host=host, port=port, debug=debug, allow_unsafe_werkzeug=True)
     finally:
         logger.info("Shutting down agent pool...")
         if _agent_pool_loop:
