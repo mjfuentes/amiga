@@ -30,6 +30,7 @@ interface TaskSidebarProps {
 export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [connected, setConnected] = useState(false);
+  const [filter, setFilter] = useState<'active' | 'completed'>('active');
 
   useEffect(() => {
     if (!visible) return;
@@ -50,13 +51,9 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
           try {
             const data = JSON.parse(event.data);
             // SSE sends: { overview: { task_statistics: { recent_24h: { tasks: [...] } } } }
-            const tasks = data?.overview?.task_statistics?.recent_24h?.tasks;
-            if (tasks && Array.isArray(tasks)) {
-              // Filter to show only active tasks (running or pending)
-              const activeTasks = tasks.filter(
-                (task: Task) => task.status === 'running' || task.status === 'pending'
-              );
-              setTasks(activeTasks);
+            const allTasks = data?.overview?.task_statistics?.recent_24h?.tasks;
+            if (allTasks && Array.isArray(allTasks)) {
+              setTasks(allTasks);
             }
           } catch (error) {
             console.error('Failed to parse SSE data:', error);
@@ -145,23 +142,47 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
 
   if (!visible) return null;
 
+  // Filter tasks based on selected filter
+  const filteredTasks = tasks.filter((task) => {
+    if (filter === 'active') {
+      return task.status === 'running' || task.status === 'pending';
+    } else {
+      return task.status === 'completed' || task.status === 'failed' || task.status === 'stopped';
+    }
+  });
+
   return (
     <div className="task-sidebar">
       <div className="sidebar-header">
-        <h3>Active Tasks</h3>
+        <h3>Tasks</h3>
         <span className={`connection-indicator ${connected ? 'connected' : 'disconnected'}`}>
           {connected ? '●' : '○'}
         </span>
       </div>
 
+      <div className="filter-toggle">
+        <button
+          className={`filter-button ${filter === 'active' ? 'active' : ''}`}
+          onClick={() => setFilter('active')}
+        >
+          Active ({tasks.filter(t => t.status === 'running' || t.status === 'pending').length})
+        </button>
+        <button
+          className={`filter-button ${filter === 'completed' ? 'active' : ''}`}
+          onClick={() => setFilter('completed')}
+        >
+          Completed ({tasks.filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'stopped').length})
+        </button>
+      </div>
+
       <div className="sidebar-content">
-        {tasks.length === 0 ? (
+        {filteredTasks.length === 0 ? (
           <div className="empty-state">
-            <p>No active tasks</p>
+            <p>No {filter} tasks</p>
           </div>
         ) : (
           <div className="tasks-list">
-            {tasks.map((task) => (
+            {filteredTasks.map((task) => (
               <div
                 key={task.task_id}
                 className={`task-item ${task.status}`}
