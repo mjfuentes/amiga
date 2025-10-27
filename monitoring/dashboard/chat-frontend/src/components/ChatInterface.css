@@ -747,13 +747,23 @@
   background: #6a9fb5 !important;
 }
 
-/* Hide scrollbar */
+/* Hide scrollbar for message list */
 .cs-message-list {
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE and Edge */
 }
 
 .cs-message-list::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+/* Hide scrollbar for message input textarea */
+.cs-message-input__content-editor {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.cs-message-input__content-editor::-webkit-scrollbar {
   display: none; /* Chrome, Safari, Opera */
 }
 
