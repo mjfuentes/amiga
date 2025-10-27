@@ -54,6 +54,9 @@ deploy_chat() {
     echo "📦 Building chat-frontend..."
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
+    # Only check disk space when building
+    check_disk_space
+
     cd monitoring/dashboard/chat-frontend
 
     # Check if node_modules exists, if not, warn about disk space
@@ -180,9 +183,6 @@ show_usage() {
 
 # Main execution
 COMPONENT="${1:-all}"
-
-# Check disk space before starting
-check_disk_space
 
 case "$COMPONENT" in
     chat)
