@@ -32,6 +32,47 @@
   transition: color 0.3s ease;
 }
 
+.filter-toggle {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.filter-button {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #888;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.filter-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(106, 159, 181, 0.3);
+  color: #b0b0b0;
+}
+
+.filter-button.active {
+  background: rgba(106, 159, 181, 0.2);
+  border-color: rgba(106, 159, 181, 0.5);
+  color: #6a9fb5;
+  font-weight: 600;
+}
+
+.filter-button:focus {
+  outline: 2px solid rgba(106, 159, 181, 0.5);
+  outline-offset: 2px;
+}
+
 .connection-indicator.connected {
   color: #7cb342;
 }
@@ -107,6 +148,18 @@
 }
 
 .task-item.pending {
+  border-left: 3px solid #888;
+}
+
+.task-item.completed {
+  border-left: 3px solid #7cb342;
+}
+
+.task-item.failed {
+  border-left: 3px solid #f87171;
+}
+
+.task-item.stopped {
   border-left: 3px solid #888;
 }
 
