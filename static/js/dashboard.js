@@ -44,6 +44,26 @@ let autoScrollEnabled = true;
 // SocketIO connection for real-time tool updates
 let socket = null;
 
+// Handle hash-based routing for task links
+function handleHashRouting() {
+    const hash = window.location.hash;
+
+    if (!hash || hash === '#') {
+        return;
+    }
+
+    // Remove the # prefix
+    const hashValue = hash.substring(1);
+
+    // Check if it's a task link (format: task_<id> or just the hex ID)
+    if (hashValue.startsWith('task_')) {
+        const taskId = hashValue.substring(5); // Remove 'task_' prefix
+        showTaskDetail(taskId);
+        // Clear hash to prevent issues with browser back button
+        history.replaceState(null, null, ' ');
+    }
+}
+
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', () => {
     // Always use dark theme
@@ -60,6 +80,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Setup keyboard navigation for filter buttons
     setupFilterKeyboardNavigation();
     setupDocumentationFilterKeyboardNavigation();
+
+    // Handle hash-based routing for task links
+    handleHashRouting();
+    window.addEventListener('hashchange', handleHashRouting);
 });
 
 // Setup keyboard navigation for filter buttons
@@ -2086,6 +2110,7 @@ window.closeTaskModal = closeTaskModal;
 window.showErrorsModal = showErrorsModal;
 window.closeErrorsModal = closeErrorsModal;
 window.toggleAutoScroll = toggleAutoScroll;
+window.stopCurrentTask = stopCurrentTask;
 window.expandToolCall = expandToolCall;
 window.copyToClipboard = copyToClipboard;
 window.filterDocs = filterDocs;
