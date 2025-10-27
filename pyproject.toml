@@ -1,0 +1,107 @@
+[tool.black]
+line-length = 120
+target-version = ['py312', 'py313']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | venv
+  | __pycache__
+  | \.eggs
+  | \.pytest_cache
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 120
+skip_gitignore = true
+known_first_party = ["telegram_bot"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    # "I",   # isort - DISABLED: conflicts with isort hook
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by black)
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+    "W191",  # indentation contains tabs
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]  # Allow unused imports in __init__.py
+
+[tool.bandit]
+exclude_dirs = [".venv", "venv", "tests", "__pycache__"]
+skips = [
+    "B101",  # assert_used check
+    "B404",  # subprocess module - needed for git commands
+    "B603",  # subprocess without shell - actually secure
+    "B606",  # os.execl - needed for bot restart
+    "B607",  # partial executable path - safe for standard tools like git
+    "B608",  # hardcoded SQL - we use parameterized queries where needed
+]
+
+[tool.bandit.assert_used]
+skips = ["**/test_*.py", "**/tests/**"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --strict-markers --tb=short -m 'not integration'"
+testpaths = ["tests/unit", "tests/integration"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+asyncio_mode = "auto"
+markers = [
+    "asyncio: mark test as async",
+    "slow: marks tests as slow (deselect with '-m not slow')",
+    "integration: marks integration tests (require external services or data)",
+    "ui: marks UI tests (require browser/display)",
+    "game: marks game functionality tests",
+]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false  # Too strict for existing codebase
+check_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "venv/*",
+    "*/tests/*",
+    "*/node_modules/*",
+    "setup.py",
+]
+
+[tool.coverage.report]
+precision = 2
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"

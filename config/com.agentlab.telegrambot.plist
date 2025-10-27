@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Unique identifier for the service -->
+    <key>Label</key>
+    <string>com.agentlab.telegrambot</string>
+
+    <!-- Path to startup script that launches bot + monitoring server -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/matifuentes/Workspace/agentlab/start_services.sh</string>
+    </array>
+
+    <!-- Working directory -->
+    <key>WorkingDirectory</key>
+    <string>/Users/matifuentes/Workspace/agentlab</string>
+
+    <!-- Auto-start on load -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Auto-restart if crashes -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <!-- Restart throttle (wait 10 seconds between restarts) -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <!-- Combine stdout and stderr to one log file -->
+    <key>StandardOutPath</key>
+    <string>/Users/matifuentes/Workspace/agentlab/logs/bot.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/matifuentes/Workspace/agentlab/logs/bot.log</string>
+
+    <!-- Environment variables (load from .env manually or set here) -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
+    </dict>
+</dict>
+</plist>

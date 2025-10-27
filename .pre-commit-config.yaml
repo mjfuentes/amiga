@@ -1,0 +1,155 @@
+# Pre-commit hooks configuration for Telegram Bot
+# Run pre-commit install to set up the git hook
+# Run pre-commit run --all-files to run manually
+
+repos:
+  # Python code formatting
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black
+        language_version: python3
+        args: ['--line-length=120']
+        files: '^telegram_bot/.*\.py$'
+
+  # Import sorting
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: ['--profile=black', '--line-length=120']
+        files: '^telegram_bot/.*\.py$'
+
+  # Linting with ruff (fast, comprehensive)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        args: ['--fix', '--exit-non-zero-on-fix']
+        files: '^telegram_bot/.*\.py$'
+
+  # Security checks
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.10
+    hooks:
+      - id: bandit
+        args: ['-c', 'pyproject.toml']
+        additional_dependencies: ['bandit[toml]']
+        files: '^telegram_bot/.*\.py$'
+
+  # General file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        files: '^telegram_bot/.*\.(py|md|txt|yaml|yml)$'
+      - id: end-of-file-fixer
+        files: '^telegram_bot/.*\.(py|md|txt|yaml|yml)$'
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+        exclude: '^(logo\.png|telegram_bot/logo\.png|data/archive/)'
+      - id: check-merge-conflict
+      - id: check-json
+      - id: check-toml
+      - id: mixed-line-ending
+
+  # Python-specific checks
+  - repo: https://github.com/pre-commit/pygrep-hooks
+    rev: v1.10.0
+    hooks:
+      - id: python-check-blanket-noqa
+        files: '^telegram_bot/.*\.py$'
+      - id: python-check-blanket-type-ignore
+        files: '^telegram_bot/.*\.py$'
+      - id: python-no-eval
+        files: '^telegram_bot/.*\.py$'
+
+  # Local hooks for project-specific tests
+  - repo: local
+    hooks:
+      # Syntax check all Python files
+      - id: python-syntax
+        name: Check Python syntax
+        entry: python3 -m py_compile
+        language: system
+        files: '^telegram_bot/.*\.py$'
+        pass_filenames: true
+
+      # Run pytest if tests exist - REQUIRED for all code changes
+      - id: pytest
+        name: Run pytest (REQUIRED)
+        entry: bash -c 'cd telegram_bot && if [ -d "tests" ]; then ../venv/bin/python -m pytest tests/ -v --tb=short -x --ignore=tests/test_monitoring_server.py --ignore=tests/test_websocket.py --ignore=tests/test_dashboard_frontend.py --ignore=tests/test_worktree_manager.py || exit 1; else echo "WARNING No tests found."; fi'
+        language: system
+        files: '^telegram_bot/.*\.py$'
+        pass_filenames: false
+        always_run: false
+
+      # Check for common security issues
+      - id: check-secrets
+        name: Check for secrets
+        entry: bash -c 'if grep -rIn --exclude-dir=".git" --exclude="*.pyc" --exclude-dir="__pycache__" "TELEGRAM_BOT_TOKEN\s*=\s*['\''\"]\w" telegram_bot/; then echo "Found hardcoded secrets"; exit 1; fi'
+        language: system
+        files: '^telegram_bot/.*\.py$'
+        pass_filenames: false
+
+      # Verify all changes are tested
+      - id: check-test-coverage
+        name: Verify test coverage for changes
+        entry: bash -c 'changed_files=$(git diff --name-only --cached | grep "^telegram_bot/.*\.py$" | grep -v "test_" || true); if [ -n "$changed_files" ]; then echo "Modified files"; echo "$changed_files"; test_count=$(find telegram_bot -name "test_*.py" -o -name "*_test.py" 2>/dev/null | wc -l); if [ "$test_count" -eq 0 ]; then echo "ERROR No test files found. Please add tests."; exit 1; fi; fi'
+        language: system
+        pass_filenames: false
+        stages: [commit]
+
+      # Test frontend_worker agent configuration
+      - id: test-frontend-worker
+        name: Test frontend_worker agent
+        entry: bash -c 'echo "Testing frontend_worker agent..."; output=$(claude chat --agents frontend_worker --model haiku --permission-mode bypassPermissions <<< "List all MCP tools (start with mcp__). Respond with count only." 2>&1); if echo "$output" | grep -q "mcp__chrome-devtools"; then echo "✓ frontend_worker has Chrome DevTools MCP access"; else echo "✗ frontend_worker missing Chrome DevTools MCP"; exit 1; fi'
+        language: system
+        pass_filenames: false
+        files: '^\.claude/agents/frontend_worker\.md$'
+        always_run: false
+
+      # Block .md files in root directory (except README.md, CLAUDE.md, and CONTRIBUTING.md)
+      - id: block-root-md-files
+        name: Block .md files in root directory
+        entry: bash -c 'staged_md=$(git diff --name-only --cached | grep "^[^/]*\.md$" | grep -v "^README\.md$" | grep -v "^CLAUDE\.md$" | grep -v "^CONTRIBUTING\.md$" || true); if [ -n "$staged_md" ]; then echo "ERROR - .md files not allowed in project root (except README.md, CLAUDE.md, and CONTRIBUTING.md)"; echo "Found - $staged_md"; echo ""; echo "Move analysis/investigation docs to docs/analysis/"; echo "See CLAUDE.md - Analysis and Investigation Files section"; exit 1; fi'
+        language: system
+        pass_filenames: false
+        stages: [commit]
+        always_run: false
+
+      # Block scattered file additions
+      - id: block-scattered-files
+        name: Block scattered file additions
+        entry: .pre-commit-hooks/block-scattered-files.sh
+        language: system
+        pass_filenames: false
+        stages: [commit]
+        always_run: true
+
+      # Block recreation of telegram_bot/data as regular directory
+      - id: block-telegram-bot-data
+        name: Verify telegram_bot/data is symlink
+        entry: .pre-commit-hooks/block-telegram-bot-data.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # Enforce chat-frontend deployment
+      - id: chat-frontend-deploy
+        name: Ensure chat-frontend build is deployed
+        entry: bash -c 'staged_files=$(git diff --name-only --cached | grep "^telegram_bot/chat-frontend/src/" || true); if [ -n "$staged_files" ]; then echo "Chat-frontend source modified. Checking deployment..."; latest_src=$(find telegram_bot/chat-frontend/src -type f -exec stat -f "%m %N" {} \; 2>/dev/null | sort -rn | head -1 | cut -d" " -f2-); latest_build=$(find telegram_bot/static/chat -type f -exec stat -f "%m %N" {} \; 2>/dev/null | sort -rn | head -1 | cut -d" " -f2-); src_time=$(stat -f "%m" "$latest_src" 2>/dev/null || echo 0); build_time=$(stat -f "%m" "$latest_build" 2>/dev/null || echo 0); if [ "$src_time" -gt "$build_time" ]; then echo "ERROR - Chat-frontend source newer than build"; echo "Run - cd telegram_bot/chat-frontend && ./deploy.sh"; exit 1; fi; echo "✓ Chat-frontend deployment current"; fi'
+        language: system
+        pass_filenames: false
+        stages: [commit]
+        always_run: false
+
+      # Enforce workflow documentation
+      - id: workflow-check
+        name: Workflow enforcement reminder
+        entry: bash -c 'echo "✓ Pre-commit hooks passed"; echo "Remember - All code changes must be tested and committed"; echo "Workflow - Format → Lint → Test → Commit"'
+        language: system
+        pass_filenames: false
+        stages: [commit]
+        always_run: true

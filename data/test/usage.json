@@ -1,0 +1,60 @@
+{
+  "12345": {
+    "user_id": 12345,
+    "total_requests": 5,
+    "total_cost": 0.032,
+    "daily_cost": 0.032,
+    "monthly_cost": 0.032,
+    "weekly_cost": 0.032,
+    "records": [
+      {
+        "timestamp": "2025-10-17T12:44:52.622909",
+        "model": "haiku",
+        "input_tokens": 500,
+        "output_tokens": 1500,
+        "cost": 0.0064,
+        "request_type": "chat"
+      },
+      {
+        "timestamp": "2025-10-17T12:58:50.558265",
+        "model": "haiku",
+        "input_tokens": 500,
+        "output_tokens": 1500,
+        "cost": 0.0064,
+        "request_type": "chat"
+      },
+      {
+        "timestamp": "2025-10-17T13:41:17.454497",
+        "model": "haiku",
+        "input_tokens": 500,
+        "output_tokens": 1500,
+        "cost": 0.0064,
+        "request_type": "chat"
+      },
+      {
+        "timestamp": "2025-10-17T13:43:25.101116",
+        "model": "haiku",
+        "input_tokens": 500,
+        "output_tokens": 1500,
+        "cost": 0.0064,
+        "request_type": "chat"
+      },
+      {
+        "timestamp": "2025-10-17T15:57:00.745574",
+        "model": "haiku",
+        "input_tokens": 500,
+        "output_tokens": 1500,
+        "cost": 0.0064,
+        "request_type": "chat"
+      }
+    ],
+    "limits": {
+      "daily": 100.0,
+      "monthly": 1000.0
+    },
+    "last_reset": "2025-10-17T12:44:52.622771",
+    "session_cost": 0.032,
+    "session_start": "2025-10-17T12:44:52.622771",
+    "last_warning": null
+  }
+}

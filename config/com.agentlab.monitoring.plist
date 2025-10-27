@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Unique identifier for the service -->
+    <key>Label</key>
+    <string>com.agentlab.monitoring</string>
+
+    <!-- Path to python and script -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/matifuentes/Workspace/agentlab/venv/bin/python</string>
+        <string>/Users/matifuentes/Workspace/agentlab/telegram_bot/monitoring_server.py</string>
+    </array>
+
+    <!-- Working directory -->
+    <key>WorkingDirectory</key>
+    <string>/Users/matifuentes/Workspace/agentlab</string>
+
+    <!-- Auto-start on load -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Auto-restart if crashes or killed -->
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Restart throttle (wait 5 seconds between restarts) -->
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+
+    <!-- Log files -->
+    <key>StandardOutPath</key>
+    <string>/Users/matifuentes/Workspace/agentlab/logs/monitoring.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/matifuentes/Workspace/agentlab/logs/monitoring.log</string>
+
+    <!-- Environment variables -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
+    </dict>
+</dict>
+</plist>

@@ -1,0 +1,44 @@
+#!/bin/bash
+# File guard hook - prevents access to sensitive files
+# Based on awesome-claude-code pattern from claudekit
+
+TOOL_NAME="$1"
+INPUT_JSON="$2"
+
+# Only check file-related tools
+if [[ "$TOOL_NAME" != "Read" && "$TOOL_NAME" != "Write" && "$TOOL_NAME" != "Edit" ]]; then
+  exit 0
+fi
+
+# Sensitive patterns to block
+BLOCKED_PATTERNS=(
+  "*.env"
+  ".env*"
+  "data/*.json"
+  "data/sessions/*"
+  "data/cost_tracking.json"
+  "logs/*"
+  "*/.ssh/*"
+  "*/.aws/*"
+  "*/credentials*"
+  "*/secrets/*"
+  "*ANTHROPIC_API_KEY*"
+  "*TELEGRAM_BOT_TOKEN*"
+)
+
+# Extract file path from tool input
+FILE_PATH=$(echo "$INPUT_JSON" | jq -r '.file_path // .path // ""')
+
+# Check against blocked patterns
+for pattern in "${BLOCKED_PATTERNS[@]}"; do
+  if [[ "$FILE_PATH" == $pattern ]] || [[ "$FILE_PATH" =~ $pattern ]]; then
+    echo "🚫 BLOCKED: Access to sensitive file denied: $FILE_PATH"
+    echo "Reason: Matches security pattern '$pattern'"
+    echo "If you need to access this file, please ask the user to temporarily disable the file-guard hook"
+    exit 1
+  fi
+done
+
+# Log allowed access for audit
+echo "✅ File access allowed: $FILE_PATH"
+exit 0

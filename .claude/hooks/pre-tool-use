@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# Pre-tool-use hook for tracking Claude Code tool invocations
+# Also validates git commits don't use --no-verify or similar skip flags
+
+set +e  # Don't exit on error - hooks should be resilient
+
+# DEBUG: Log that hook was triggered
+echo "[DEBUG] Hook triggered at $(date)" >> /tmp/hook_debug.log
+
+# Parse input JSON safely
+INPUT=$(cat)
+
+# Check if this is a git command with skip/force flags
+TOOL_NAME=$(echo "$INPUT" | python3 -c "import json, sys; print(json.load(sys.stdin).get('tool_name', ''))" 2>/dev/null)
+if [ "$TOOL_NAME" = "Bash" ]; then
+    COMMAND=$(echo "$INPUT" | python3 -c "import json, sys; print(json.load(sys.stdin).get('tool_input', {}).get('command', ''))" 2>/dev/null)
+
+    # Check for git commit with skip flags
+    if echo "$COMMAND" | grep -q "git commit" && echo "$COMMAND" | grep -qE -- "--no-verify|--no-gpg-sign|-n"; then
+        echo "ERROR: Git commit with skip flags detected. Use of --no-verify, --no-gpg-sign, or -n is not allowed."
+        exit 1
+    fi
+
+    # Check for force push (--force or -f)
+    if echo "$COMMAND" | grep -q "git push" && echo "$COMMAND" | grep -qE -- "--force|-f[^a-z]"; then
+        echo "ERROR: Force push detected. Use of --force or -f with git push is not allowed."
+        exit 1
+    fi
+fi
+
+# DEBUG: Log input
+echo "[DEBUG] Input: $INPUT" >> /tmp/hook_debug.log
+
+# Extract data from JSON and build log entry
+LOG_DATA=$(echo "$INPUT" | python3 -c "
+import json, sys, os
+from datetime import datetime
+try:
+    data = json.load(sys.stdin)
+    # Use SESSION_ID environment variable if set, otherwise use session_id from JSON
+    session_id = os.environ.get('SESSION_ID') or data.get('session_id', 'unknown')
+    tool_name = data.get('tool_name', 'unknown')
+    tool_input = data.get('tool_input', {})
+
+    # Extract task_id from worktree path if in /tmp/agentlab-worktrees/
+    task_id = os.environ.get('TASK_ID')
+    if not task_id:
+        pwd = os.getcwd()
+        if '/tmp/agentlab-worktrees/' in pwd or '/private/tmp/agentlab-worktrees/' in pwd:
+            # Extract task_id from path like /tmp/agentlab-worktrees/0e89c3
+            task_id = os.path.basename(pwd)
+
+    # Return session_id, task_id, and log entry
+    log = {
+        'timestamp': datetime.utcnow().isoformat() + 'Z',
+        'tool': tool_name,
+        'parameters': tool_input,
+        'status': 'starting',
+        'task_id': task_id,
+        'session_uuid': session_id
+    }
+    print(json.dumps({'session_id': session_id, 'task_id': task_id, 'log': log}))
+except Exception as e:
+    print(json.dumps({
+        'session_id': os.environ.get('SESSION_ID', 'unknown'),
+        'task_id': None,
+        'log': {
+            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'tool': 'unknown',
+            'status': 'error',
+            'error': str(e)
+        }
+    }))
+" 2>/dev/null)
+
+SESSION_ID_RESOLVED=$(echo "$LOG_DATA" | python3 -c "import json, sys; print(json.load(sys.stdin).get('session_id', 'unknown'))" 2>/dev/null)
+LOG_ENTRY=$(echo "$LOG_DATA" | python3 -c "import json, sys; print(json.dumps(json.load(sys.stdin).get('log', {})))" 2>/dev/null)
+
+# Determine log directory
+# Try multiple locations: PWD, Telegram bot workspace, fallback to temp
+if [ -d "$PWD/logs" ]; then
+    LOG_DIR="$PWD/logs/sessions/$SESSION_ID_RESOLVED"
+elif [ -d "/Users/matifuentes/Workspace/agentlab/logs" ]; then
+    LOG_DIR="/Users/matifuentes/Workspace/agentlab/logs/sessions/$SESSION_ID_RESOLVED"
+elif [ -d "/Users/matifuentes/Workspace/agentlab/telegram_bot/logs" ]; then
+    LOG_DIR="/Users/matifuentes/Workspace/agentlab/telegram_bot/logs/sessions/$SESSION_ID_RESOLVED"
+else
+    # Fallback to temp if no logs directory found
+    LOG_DIR="/tmp/claude-sessions/$SESSION_ID_RESOLVED"
+fi
+
+# Create log directory (fail silently if unable)
+mkdir -p "$LOG_DIR" 2>/dev/null || exit 0
+
+# Log file
+LOG_FILE="$LOG_DIR/pre_tool_use.jsonl"
+
+# Append to log file (fail silently)
+if [ -n "$LOG_ENTRY" ]; then
+    echo "$LOG_ENTRY" >> "$LOG_FILE" 2>/dev/null
+fi
+
+# Record tool start to database for real-time monitoring
+# Pass INPUT through environment to avoid re-reading stdin
+export INPUT_JSON="$INPUT"
+python3 /Users/matifuentes/Workspace/agentlab/scripts/record_tool_start.py 2>/dev/null || true
+
+exit 0

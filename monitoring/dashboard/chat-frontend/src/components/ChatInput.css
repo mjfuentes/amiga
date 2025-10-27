@@ -1,0 +1,42 @@
+/* Override: Chat input always highlighted */
+.cs-message-input__content-editor {
+  background: #1a1a1a !important;
+  color: #e8e8e8 !important;
+  border: 1px solid #00aaff !important;
+  border-radius: 4px !important;
+  box-shadow: 0 0 0 1px rgba(0, 170, 255, 0.3) !important;
+}
+
+.cs-message-input__content-editor:focus {
+  border-color: #00aaff !important;
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(0, 170, 255, 0.5) !important;
+  background: #1a1a1a !important;
+}
+
+/* Fix placeholder text color for better visibility */
+.cs-message-input__content-editor::placeholder {
+  color: #999999 !important;
+  opacity: 1 !important;
+}
+
+.cs-message-input__content-editor::-webkit-input-placeholder {
+  color: #999999 !important;
+  opacity: 1 !important;
+}
+
+.cs-message-input__content-editor::-moz-placeholder {
+  color: #999999 !important;
+  opacity: 1 !important;
+}
+
+.cs-message-input__content-editor:-ms-input-placeholder {
+  color: #999999 !important;
+  opacity: 1 !important;
+}
+
+/* Fix contenteditable placeholder (uses ::before pseudo-element) */
+.cs-message-input__content-editor[data-placeholder]:empty::before {
+  color: #999999 !important;
+  opacity: 1 !important;
+}

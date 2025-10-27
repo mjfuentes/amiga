@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Code Documentation Map</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+
+        #header {
+            background: #2a2a2a;
+            padding: 20px;
+            border-bottom: 2px solid #444;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+            color: #f39c12;
+        }
+
+        #controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 15px;
+        }
+
+        button, input, select {
+            padding: 8px 15px;
+            border: 1px solid #555;
+            background: #333;
+            color: #e0e0e0;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        button:hover {
+            background: #444;
+        }
+
+        input {
+            min-width: 200px;
+        }
+
+        #cy {
+            width: 100%;
+            height: calc(100vh - 180px);
+            background: #1a1a1a;
+        }
+
+        #info-panel {
+            position: fixed;
+            right: 20px;
+            top: 180px;
+            width: 300px;
+            background: #2a2a2a;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 15px;
+            max-height: calc(100vh - 200px);
+            overflow-y: auto;
+            display: none;
+        }
+
+        #info-panel.active {
+            display: block;
+        }
+
+        #info-panel h3 {
+            color: #f39c12;
+            margin-bottom: 10px;
+        }
+
+        #info-panel p {
+            margin: 5px 0;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        #info-panel .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 20px;
+            padding: 0;
+            width: 25px;
+            height: 25px;
+        }
+
+        #legend {
+            background: #2a2a2a;
+            padding: 15px;
+            border-top: 1px solid #444;
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            border: 2px solid #555;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>🗺️ Claude Code Documentation Map</h1>
+        <div id="controls">
+            <input type="text" id="search" placeholder="Search nodes..." />
+            <select id="filter">
+                <option value="all">Show All</option>
+                <option value="agents">Agents Only</option>
+                <option value="tools">Tools Only</option>
+                <option value="features">Features Only</option>
+                <option value="hooks">Hooks Only</option>
+            </select>
+            <button onclick="resetView()">Reset View</button>
+            <button onclick="fitToScreen()">Fit to Screen</button>
+            <button onclick="exportData()">Export JSON</button>
+        </div>
+    </div>
+
+    <div id="cy"></div>
+
+    <div id="info-panel">
+        <button class="close-btn" onclick="closeInfo()">×</button>
+        <h3 id="info-title"></h3>
+        <p id="info-type"></p>
+        <p id="info-description"></p>
+        <p id="info-model"></p>
+        <p id="info-tools"></p>
+    </div>
+
+    <div id="legend">
+        <div class="legend-item">
+            <div class="legend-color" style="background: #f39c12;"></div>
+            <span>Root</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #3498db;"></div>
+            <span>Category</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #2ecc71;"></div>
+            <span>Agent</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #e74c3c;"></div>
+            <span>Tool</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #9b59b6;"></div>
+            <span>Hook</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #1abc9c;"></div>
+            <span>Feature</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #e67e22;"></div>
+            <span>Skill</span>
+        </div>
+    </div>
+
+    <script>
+        // Claude Code documentation structure
+        const elements = {
+            nodes: [
+                // Root
+                { data: { id: 'root', label: 'Claude Code', type: 'root', description: 'Official CLI for Claude - Interactive development assistant' } },
+
+                // Main Categories
+                { data: { id: 'agents', label: 'Agents', type: 'category', description: 'Specialized AI agents for different tasks' } },
+                { data: { id: 'tools', label: 'Tools', type: 'category', description: 'Available tools for file operations, execution, and web access' } },
+                { data: { id: 'hooks', label: 'Hooks', type: 'category', description: 'Event-driven scripts for monitoring and automation' } },
+                { data: { id: 'features', label: 'Features', type: 'category', description: 'Core capabilities and workflows' } },
+                { data: { id: 'skills', label: 'Skills', type: 'category', description: 'User-defined skills for specialized tasks' } },
+
+                // Core Agents
+                { data: { id: 'orchestrator', label: 'orchestrator', type: 'agent', description: 'Task coordinator - delegates to specialized agents, never executes directly', tools: 'Task', model: 'Inherited' } },
+                { data: { id: 'code_agent', label: 'code_agent', type: 'agent', description: 'Backend implementation - Python, file operations, git commands', tools: 'Read, Write, Edit, Glob, Grep, Bash', model: 'Sonnet 4.5' } },
+                { data: { id: 'frontend_agent', label: 'frontend_agent', type: 'agent', description: 'UI/UX development - HTML, CSS, JavaScript with Chrome DevTools', tools: 'Read, Write, Edit, Glob, Grep, Bash', model: 'Sonnet 4.5' } },
+                { data: { id: 'research_agent', label: 'research_agent', type: 'agent', description: 'Analysis and proposals - web research, comparative evaluation', tools: 'Read, Glob, Grep, WebSearch, WebFetch', model: 'Opus 4.5' } },
+
+                // Quality Assurance Agents
+                { data: { id: 'jenny', label: 'Jenny', type: 'agent', description: 'Spec verification - ensures implementation matches requirements', tools: 'All (*)', model: 'Inherited' } },
+                { data: { id: 'claude-md-compliance', label: 'claude-md-compliance-checker', type: 'agent', description: 'Verifies adherence to CLAUDE.md project guidelines', tools: 'All (*)', model: 'Inherited' } },
+                { data: { id: 'code-quality', label: 'code-quality-pragmatist', type: 'agent', description: 'Detects over-engineering and unnecessary complexity', tools: 'All (*)', model: 'Inherited' } },
+                { data: { id: 'karen', label: 'karen', type: 'agent', description: 'Reality check on project completion - cuts through incomplete work', tools: 'All (*)', model: 'Inherited' } },
+                { data: { id: 'task-validator', label: 'task-completion-validator', type: 'agent', description: 'Validates tasks actually work, not just superficially complete', tools: 'All (*)', model: 'Inherited' } },
+                { data: { id: 'ui-tester', label: 'ui-comprehensive-tester', type: 'agent', description: 'UI testing - Puppeteer, Playwright, Mobile MCP', tools: 'All (*)', model: 'Inherited' } },
+                { data: { id: 'ultrathink', label: 'ultrathink-debugger', type: 'agent', description: 'Deep debugging - root cause analysis for complex issues', tools: 'All (*)', model: 'Opus 4.5' } },
+
+                // General Purpose Agents
+                { data: { id: 'general-purpose', label: 'general-purpose', type: 'agent', description: 'Multi-step tasks, complex searches, research', tools: 'All (*)', model: 'Inherited' } },
+                { data: { id: 'explore', label: 'Explore', type: 'agent', description: 'Fast codebase exploration - glob, grep, keyword search', tools: 'Glob, Grep, Read, Bash', model: 'Inherited' } },
+
+                // Tools - File Operations
+                { data: { id: 'read', label: 'Read', type: 'tool', description: 'Read files (text, images, PDFs, notebooks) with line offsets' } },
+                { data: { id: 'write', label: 'Write', type: 'tool', description: 'Create new files or overwrite existing (requires Read first)' } },
+                { data: { id: 'edit', label: 'Edit', type: 'tool', description: 'Exact string replacements in files' } },
+                { data: { id: 'glob', label: 'Glob', type: 'tool', description: 'Fast file pattern matching (e.g., **/*.js)' } },
+                { data: { id: 'grep', label: 'Grep', type: 'tool', description: 'Regex content search with ripgrep' } },
+
+                // Tools - Execution
+                { data: { id: 'bash', label: 'Bash', type: 'tool', description: 'Execute shell commands with background support' } },
+                { data: { id: 'task', label: 'Task', type: 'tool', description: 'Launch specialized agents for complex tasks' } },
+                { data: { id: 'skill', label: 'Skill', type: 'tool', description: 'Execute user-defined skills' } },
+
+                // Tools - Web & Interaction
+                { data: { id: 'websearch', label: 'WebSearch', type: 'tool', description: 'Search the web for current information' } },
+                { data: { id: 'webfetch', label: 'WebFetch', type: 'tool', description: 'Fetch and analyze web page content' } },
+                { data: { id: 'askuser', label: 'AskUserQuestion', type: 'tool', description: 'Gather user input during execution' } },
+
+                // Tools - Organization
+                { data: { id: 'todowrite', label: 'TodoWrite', type: 'tool', description: 'Task list management for complex workflows' } },
+
+                // Hooks
+                { data: { id: 'pre-tool-use', label: 'pre-tool-use', type: 'hook', description: 'Runs before each tool execution - logging, validation' } },
+                { data: { id: 'post-tool-use', label: 'post-tool-use', type: 'hook', description: 'Runs after each tool execution - logging, metrics' } },
+                { data: { id: 'session-end', label: 'session-end', type: 'hook', description: 'Runs when session completes - aggregation, cleanup' } },
+                { data: { id: 'user-prompt-submit', label: 'user-prompt-submit', type: 'hook', description: 'Runs when user submits prompt - preprocessing' } },
+
+                // Features - Core
+                { data: { id: 'plan-mode', label: 'Plan Mode', type: 'feature', description: 'Plan before execution - review and approve implementation steps' } },
+                { data: { id: 'mcp-support', label: 'MCP Support', type: 'feature', description: 'Model Context Protocol - extend with custom servers' } },
+                { data: { id: 'parallel-tools', label: 'Parallel Tool Calls', type: 'feature', description: 'Execute independent tool calls simultaneously' } },
+                { data: { id: 'git-workflow', label: 'Git Workflow', type: 'feature', description: 'Automated commits, PR creation, safety checks' } },
+                { data: { id: 'cost-tracking', label: 'Cost Tracking', type: 'feature', description: 'Monitor API usage and token costs' } },
+
+                // Features - Browser
+                { data: { id: 'chrome-devtools', label: 'Chrome DevTools MCP', type: 'feature', description: 'Browser automation - screenshots, navigation, testing' } },
+
+                // Skills (User-defined examples from AgentLab)
+                { data: { id: 'research-skill', label: 'research-agent (skill)', type: 'skill', description: 'Comprehensive research with online sources and code analysis' } },
+                { data: { id: 'xlsx-skill', label: 'xlsx (skill)', type: 'skill', description: 'Spreadsheet creation, editing, formula support' } },
+            ],
+
+            edges: [
+                // Root connections
+                { data: { source: 'root', target: 'agents' } },
+                { data: { source: 'root', target: 'tools' } },
+                { data: { source: 'root', target: 'hooks' } },
+                { data: { source: 'root', target: 'features' } },
+                { data: { source: 'root', target: 'skills' } },
+
+                // Agents hierarchy
+                { data: { source: 'agents', target: 'orchestrator' } },
+                { data: { source: 'agents', target: 'code_agent' } },
+                { data: { source: 'agents', target: 'frontend_agent' } },
+                { data: { source: 'agents', target: 'research_agent' } },
+                { data: { source: 'agents', target: 'jenny' } },
+                { data: { source: 'agents', target: 'claude-md-compliance' } },
+                { data: { source: 'agents', target: 'code-quality' } },
+                { data: { source: 'agents', target: 'karen' } },
+                { data: { source: 'agents', target: 'task-validator' } },
+                { data: { source: 'agents', target: 'ui-tester' } },
+                { data: { source: 'agents', target: 'ultrathink' } },
+                { data: { source: 'agents', target: 'general-purpose' } },
+                { data: { source: 'agents', target: 'explore' } },
+
+                // Orchestrator delegates to other agents
+                { data: { source: 'orchestrator', target: 'code_agent', label: 'delegates' } },
+                { data: { source: 'orchestrator', target: 'frontend_agent', label: 'delegates' } },
+                { data: { source: 'orchestrator', target: 'research_agent', label: 'delegates' } },
+
+                // Tools hierarchy
+                { data: { source: 'tools', target: 'read' } },
+                { data: { source: 'tools', target: 'write' } },
+                { data: { source: 'tools', target: 'edit' } },
+                { data: { source: 'tools', target: 'glob' } },
+                { data: { source: 'tools', target: 'grep' } },
+                { data: { source: 'tools', target: 'bash' } },
+                { data: { source: 'tools', target: 'task' } },
+                { data: { source: 'tools', target: 'skill' } },
+                { data: { source: 'tools', target: 'websearch' } },
+                { data: { source: 'tools', target: 'webfetch' } },
+                { data: { source: 'tools', target: 'askuser' } },
+                { data: { source: 'tools', target: 'todowrite' } },
+
+                // Hooks hierarchy
+                { data: { source: 'hooks', target: 'pre-tool-use' } },
+                { data: { source: 'hooks', target: 'post-tool-use' } },
+                { data: { source: 'hooks', target: 'session-end' } },
+                { data: { source: 'hooks', target: 'user-prompt-submit' } },
+
+                // Features hierarchy
+                { data: { source: 'features', target: 'plan-mode' } },
+                { data: { source: 'features', target: 'mcp-support' } },
+                { data: { source: 'features', target: 'parallel-tools' } },
+                { data: { source: 'features', target: 'git-workflow' } },
+                { data: { source: 'features', target: 'cost-tracking' } },
+                { data: { source: 'features', target: 'chrome-devtools' } },
+
+                // Skills hierarchy
+                { data: { source: 'skills', target: 'research-skill' } },
+                { data: { source: 'skills', target: 'xlsx-skill' } },
+
+                // Tool usage by agents
+                { data: { source: 'code_agent', target: 'read', label: 'uses' } },
+                { data: { source: 'code_agent', target: 'write', label: 'uses' } },
+                { data: { source: 'code_agent', target: 'edit', label: 'uses' } },
+                { data: { source: 'code_agent', target: 'bash', label: 'uses' } },
+                { data: { source: 'frontend_agent', target: 'chrome-devtools', label: 'uses' } },
+                { data: { source: 'research_agent', target: 'websearch', label: 'uses' } },
+                { data: { source: 'research_agent', target: 'webfetch', label: 'uses' } },
+            ]
+        };
+
+        // Initialize Cytoscape
+        const cy = cytoscape({
+            container: document.getElementById('cy'),
+            elements: elements,
+            style: [
+                {
+                    selector: 'node',
+                    style: {
+                        'background-color': function(ele) {
+                            const type = ele.data('type');
+                            const colors = {
+                                'root': '#f39c12',
+                                'category': '#3498db',
+                                'agent': '#2ecc71',
+                                'tool': '#e74c3c',
+                                'hook': '#9b59b6',
+                                'feature': '#1abc9c',
+                                'skill': '#e67e22'
+                            };
+                            return colors[type] || '#95a5a6';
+                        },
+                        'label': 'data(label)',
+                        'color': '#ffffff',
+                        'text-valign': 'center',
+                        'text-halign': 'center',
+                        'font-size': '12px',
+                        'font-weight': 'bold',
+                        'width': function(ele) {
+                            return ele.data('type') === 'root' ? 80 :
+                                   ele.data('type') === 'category' ? 60 : 50;
+                        },
+                        'height': function(ele) {
+                            return ele.data('type') === 'root' ? 80 :
+                                   ele.data('type') === 'category' ? 60 : 50;
+                        },
+                        'border-width': 2,
+                        'border-color': '#555',
+                        'text-wrap': 'wrap',
+                        'text-max-width': '100px'
+                    }
+                },
+                {
+                    selector: 'edge',
+                    style: {
+                        'width': 2,
+                        'line-color': '#555',
+                        'target-arrow-color': '#555',
+                        'target-arrow-shape': 'triangle',
+                        'curve-style': 'bezier',
+                        'label': 'data(label)',
+                        'font-size': '10px',
+                        'color': '#888',
+                        'text-rotation': 'autorotate'
+                    }
+                },
+                {
+                    selector: '.highlighted',
+                    style: {
+                        'background-color': '#fff',
+                        'line-color': '#fff',
+                        'target-arrow-color': '#fff',
+                        'border-color': '#fff',
+                        'border-width': 3
+                    }
+                },
+                {
+                    selector: '.faded',
+                    style: {
+                        'opacity': 0.2
+                    }
+                }
+            ],
+            layout: {
+                name: 'breadthfirst',
+                directed: true,
+                spacingFactor: 1.5,
+                animate: true,
+                animationDuration: 500
+            }
+        });
+
+        // Node click handler
+        cy.on('tap', 'node', function(evt) {
+            const node = evt.target;
+            const data = node.data();
+
+            document.getElementById('info-title').textContent = data.label;
+            document.getElementById('info-type').innerHTML = `<strong>Type:</strong> ${data.type}`;
+            document.getElementById('info-description').innerHTML = `<strong>Description:</strong> ${data.description || 'N/A'}`;
+            document.getElementById('info-model').innerHTML = data.model ? `<strong>Model:</strong> ${data.model}` : '';
+            document.getElementById('info-tools').innerHTML = data.tools ? `<strong>Tools:</strong> ${data.tools}` : '';
+
+            document.getElementById('info-panel').classList.add('active');
+
+            // Highlight connected nodes
+            cy.elements().removeClass('highlighted').addClass('faded');
+            node.removeClass('faded').addClass('highlighted');
+            node.connectedEdges().removeClass('faded').addClass('highlighted');
+            node.neighborhood().removeClass('faded').addClass('highlighted');
+        });
+
+        // Background click - clear selection
+        cy.on('tap', function(evt) {
+            if (evt.target === cy) {
+                closeInfo();
+            }
+        });
+
+        // Search functionality
+        document.getElementById('search').addEventListener('input', function(e) {
+            const searchTerm = e.target.value.toLowerCase();
+
+            if (searchTerm === '') {
+                cy.elements().removeClass('faded highlighted');
+                return;
+            }
+
+            cy.elements().addClass('faded');
+
+            cy.nodes().forEach(function(node) {
+                const label = node.data('label').toLowerCase();
+                const description = (node.data('description') || '').toLowerCase();
+
+                if (label.includes(searchTerm) || description.includes(searchTerm)) {
+                    node.removeClass('faded').addClass('highlighted');
+                    node.connectedEdges().removeClass('faded').addClass('highlighted');
+                }
+            });
+        });
+
+        // Filter functionality
+        document.getElementById('filter').addEventListener('change', function(e) {
+            const filterValue = e.target.value;
+
+            if (filterValue === 'all') {
+                cy.elements().show();
+            } else {
+                cy.elements().hide();
+                cy.nodes().forEach(function(node) {
+                    const type = node.data('type');
+                    if (type === 'root' || type === 'category' ||
+                        (filterValue === 'agents' && type === 'agent') ||
+                        (filterValue === 'tools' && type === 'tool') ||
+                        (filterValue === 'features' && type === 'feature') ||
+                        (filterValue === 'hooks' && type === 'hook')) {
+                        node.show();
+                        node.connectedEdges().show();
+                    }
+                });
+            }
+        });
+
+        function resetView() {
+            cy.elements().removeClass('faded highlighted');
+            closeInfo();
+            document.getElementById('search').value = '';
+            document.getElementById('filter').value = 'all';
+            cy.elements().show();
+            cy.layout({ name: 'breadthfirst', directed: true, spacingFactor: 1.5, animate: true }).run();
+        }
+
+        function fitToScreen() {
+            cy.fit();
+        }
+
+        function closeInfo() {
+            document.getElementById('info-panel').classList.remove('active');
+            cy.elements().removeClass('faded highlighted');
+        }
+
+        function exportData() {
+            const dataStr = JSON.stringify(elements, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'claude_code_structure.json';
+            link.click();
+        }
+
+        // Initial fit
+        setTimeout(() => cy.fit(), 100);
+    </script>
+</body>
+</html>

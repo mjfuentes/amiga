@@ -1,0 +1,25 @@
+{
+  "short_name": "AMIGA",
+  "name": "AMIGA - Autonomous Modular Interactive Graphical Agent",
+  "icons": [
+    {
+      "src": "/chat/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "/chat/logo192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/chat/logo512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/chat/",
+  "display": "standalone",
+  "theme_color": "#000000",
+  "background_color": "#ffffff"
+}

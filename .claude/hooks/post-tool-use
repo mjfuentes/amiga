@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Post-tool-use hook for tracking Claude Code tool results
+# Calls Python script that records to SQLite database using centralized Database class
+
+set +e  # Don't exit on error - hooks should be resilient
+
+# Debug logging
+echo "[DEBUG] PostToolUse hook triggered at $(date)" >> /tmp/hook_debug.log
+
+# Read input once
+INPUT_JSON=$(cat)
+
+# Debug log the input
+echo "[DEBUG] PostToolUse INPUT_JSON length: ${#INPUT_JSON}" >> /tmp/hook_debug.log
+
+# Extract session_id from JSON and set as SESSION_ID env var if not already set
+if [ -z "$SESSION_ID" ]; then
+    export SESSION_ID=$(echo "$INPUT_JSON" | python3 -c "import json, sys; print(json.load(sys.stdin).get('session_id', ''))" 2>/dev/null)
+fi
+
+# Export for Python to access
+export INPUT_JSON
+
+# Call Python script to record tool usage
+# Script uses Database class which handles correct path resolution
+python3 /Users/matifuentes/Workspace/agentlab/scripts/record_tool_usage.py
+
+exit 0
