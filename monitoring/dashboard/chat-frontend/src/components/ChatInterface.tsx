@@ -95,8 +95,18 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             break;
           case 'Enter':
             if (showCommands) {
-              e.preventDefault();
-              selectCommand(filteredCommands[highlightedIndex].command);
+              const selectedCommand = filteredCommands[highlightedIndex].command;
+              const currentValue = (e.target as HTMLTextAreaElement).value || (e.target as HTMLTextAreaElement).textContent || '';
+
+              // If input exactly matches command, don't prevent default - let it send
+              if (currentValue.trim() === selectedCommand) {
+                setShowCommands(false);
+                // Don't preventDefault - let MessageInput's onSend handle it
+              } else {
+                // Otherwise prevent and just autocomplete
+                e.preventDefault();
+                selectCommand(selectedCommand);
+              }
             }
             break;
           case 'Escape':
