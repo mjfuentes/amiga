@@ -60,9 +60,9 @@ try:
     log_dir = None
 
     for base in [
-        Path('/Users/matifuentes/Workspace/agentlab'),  # Project root (highest priority)
+        Path('/Users/matifuentes/Workspace/amiga'),  # Project root (highest priority)
         Path.cwd().parent if Path.cwd().name == 'telegram_bot' else Path.cwd(),  # Handle telegram_bot subdir
-        Path('/Users/matifuentes/Workspace/agentlab/telegram_bot')
+        Path('/Users/matifuentes/Workspace/amiga/telegram_bot')
     ]:
         if (base / 'data').exists():
             data_dir = base / 'data'
@@ -70,8 +70,8 @@ try:
 
     for base in [
         Path.cwd() / 'logs',
-        Path('/Users/matifuentes/Workspace/agentlab/logs'),
-        Path('/Users/matifuentes/Workspace/agentlab/telegram_bot/logs')
+        Path('/Users/matifuentes/Workspace/amiga/logs'),
+        Path('/Users/matifuentes/Workspace/amiga/telegram_bot/logs')
     ]:
         if base.exists():
             log_dir = base / 'sessions' / session_id
