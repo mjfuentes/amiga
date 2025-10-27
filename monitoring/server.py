@@ -112,7 +112,6 @@ def _finalize_group(group: dict) -> dict:
         "success": first.get("success", True),
         "parameters": first.get("parameters"),
         "error_category": first.get("error_category"),
-        "count": len(calls),  # Indicate this represents multiple operations
         "last_timestamp": last.get("timestamp"),  # Track time range
     }
 
