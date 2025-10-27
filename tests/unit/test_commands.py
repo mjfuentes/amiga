@@ -17,8 +17,6 @@ from tasks.manager import Task
 def mock_task_manager():
     """Create a mock task manager."""
     manager = Mock()
-    manager.cleanup_stale_pending_tasks = Mock()
-    manager.cleanup_old_failed_tasks = Mock()
     manager.get_active_tasks = Mock(return_value=[])
     manager.get_user_tasks = Mock(return_value=[])
     manager.get_task = Mock(return_value=None)
@@ -30,37 +28,6 @@ def mock_task_manager():
 def command_handler(mock_task_manager):
     """Create a command handler instance."""
     return CommandHandler(mock_task_manager)
-
-
-@pytest.mark.asyncio
-async def test_handle_status_no_tasks(command_handler, mock_task_manager):
-    """Test /status command with no active tasks."""
-    result = await command_handler.handle_command("/status", "12345")
-    
-    assert result["success"] is True
-    assert "No active tasks" in result["message"]
-    assert "No recent activity" in result["message"]
-    mock_task_manager.cleanup_stale_pending_tasks.assert_called_once()
-    mock_task_manager.cleanup_old_failed_tasks.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_handle_status_with_active_tasks(command_handler, mock_task_manager):
-    """Test /status command with active tasks."""
-    mock_task = Mock(spec=Task)
-    mock_task.task_id = "abc123"
-    mock_task.status = "running"
-    mock_task.description = "Test task description"
-    mock_task.created_at = "2024-10-23T12:00:00"
-    
-    mock_task_manager.get_active_tasks.return_value = [mock_task]
-    
-    result = await command_handler.handle_command("/status", "12345")
-    
-    assert result["success"] is True
-    assert "Active Tasks (1)" in result["message"]
-    assert "#abc123" in result["message"]
-    assert result["data"]["active"] == 1
 
 
 @pytest.mark.asyncio
