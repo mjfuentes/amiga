@@ -12,7 +12,7 @@
 
 **The Chat Interface**: When users refer to "the chat" or "chat frontend," they mean:
 - **Frontend**: `monitoring/dashboard/` (React + TypeScript)
-- **Served at**: `http://localhost:3000/chat` (monitoring dashboard route)
+- **Served at**: `http://localhost:3000` (root route)
 - **Backend**: `monitoring/server.py` (WebSocket handlers for messaging)
 - **Build output**: `static/chat/` (served by Flask)
 - **Deployment**: Run `cd monitoring/dashboard && ./deploy.sh` after source changes
@@ -777,7 +777,7 @@ LOG_LEVEL=INFO                   # DEBUG, INFO, WARNING, ERROR
 ./deploy.sh chat
 
 # Service runs in background
-# Access: http://localhost:3000/chat (chat UI), http://localhost:3000 (metrics dashboard)
+# Access: http://localhost:3000 (chat UI), http://localhost:3000/dashboard (metrics dashboard)
 # Logs: tail -f logs/monitoring.log
 ```
 
@@ -788,7 +788,7 @@ source venv/bin/activate
 
 # Run monitoring server (includes chat interface)
 python monitoring/server.py
-# Open http://localhost:3000/chat
+# Open http://localhost:3000
 ```
 
 **Notes**:
@@ -1078,7 +1078,7 @@ cat data/cost_tracking.json | jq
 # Monitoring dashboard: http://localhost:3000
 
 # Access chat interface
-# Open: http://localhost:3000/chat
+# Open: http://localhost:3000
 ```
 
 ## Performance Optimization
