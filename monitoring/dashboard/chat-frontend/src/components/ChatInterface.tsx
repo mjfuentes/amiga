@@ -218,12 +218,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       parts.push(
         <a
           key={`task-${taskId}-${match.index}`}
-          href={`http://localhost:3000/#${urlTaskId}?ref=chat`}
+          href={`/dashboard#${urlTaskId}?ref=chat`}
           className="task-link"
           onClick={(e) => {
             e.preventDefault();
-            // Navigate to monitoring dashboard in current tab with referrer info
-            window.location.href = `http://localhost:3000/#${urlTaskId}?ref=chat`;
+            // Navigate to monitoring dashboard with task highlighted
+            window.location.href = `/dashboard#${urlTaskId}?ref=chat`;
           }}
           title={`View task ${taskId} in monitoring dashboard`}
         >
@@ -514,11 +514,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                                   const urlTaskId = taskId.startsWith('task_') ? taskId : `task_${taskId}`;
                                   return (
                                     <a
-                                      href={`http://localhost:3000/#${urlTaskId}?ref=chat`}
+                                      href={`/dashboard#${urlTaskId}?ref=chat`}
                                       className="task-link inline-code"
                                       onClick={(e) => {
                                         e.preventDefault();
-                                        window.location.href = `http://localhost:3000/#${urlTaskId}?ref=chat`;
+                                        window.location.href = `/dashboard#${urlTaskId}?ref=chat`;
                                       }}
                                       title={`View task ${taskId} in monitoring dashboard`}
                                       {...props}
