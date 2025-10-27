@@ -520,6 +520,28 @@
   border-bottom-color: #8ab;
 }
 
+/* Task link styling */
+.message-content a.task-link {
+  color: #e07856;
+  font-weight: 600;
+  padding: 0.125rem 0.25rem;
+  border-radius: 3px;
+  background: rgba(224, 120, 86, 0.1);
+  border-bottom: 1px solid rgba(224, 120, 86, 0.3);
+  transition: all 0.2s ease;
+}
+
+.message-content a.task-link:hover {
+  color: #ff9472;
+  background: rgba(224, 120, 86, 0.2);
+  border-bottom-color: #ff9472;
+  transform: translateY(-1px);
+}
+
+.message-content a.task-link:active {
+  transform: translateY(0);
+}
+
 /* Modern polished theme overrides for @chatscope components */
 :root {
   --cs-message-group-content-max-width: 800px;

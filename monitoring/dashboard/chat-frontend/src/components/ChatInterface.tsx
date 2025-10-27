@@ -94,18 +94,15 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             break;
           case 'Enter':
             if (showCommands) {
+              e.preventDefault();
               const selectedCommand = filteredCommands[highlightedIndex].command;
-              const currentValue = (e.target as HTMLTextAreaElement).value || (e.target as HTMLTextAreaElement).textContent || '';
-
-              // If input exactly matches command, don't prevent default - let it send
-              if (currentValue.trim() === selectedCommand) {
-                setShowCommands(false);
-                // Don't preventDefault - let MessageInput's onSend handle it
-              } else {
-                // Otherwise prevent and just autocomplete
-                e.preventDefault();
-                selectCommand(selectedCommand);
-              }
+              // Insert command and immediately send it
+              setInputValue(selectedCommand);
+              setShowCommands(false);
+              // Send the command after state update
+              setTimeout(() => {
+                handleSend(selectedCommand);
+              }, 0);
             }
             break;
           case 'Escape':
@@ -189,6 +186,49 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         },
       });
     });
+  };
+
+  // Process text to linkify task IDs (e.g., #task_abc123)
+  const linkifyTaskIds = (text: string): React.ReactNode => {
+    // Match pattern: #<task_id> where task_id is alphanumeric with underscores
+    const taskIdRegex = /#(task_[a-zA-Z0-9_]+)/g;
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = taskIdRegex.exec(text)) !== null) {
+      // Add text before match
+      if (match.index > lastIndex) {
+        parts.push(text.substring(lastIndex, match.index));
+      }
+
+      // Add clickable link for task ID
+      const taskId = match[1]; // Extract task_xxx without #
+      parts.push(
+        <a
+          key={`task-${taskId}-${match.index}`}
+          href={`http://localhost:3000#task-${taskId}`}
+          className="task-link"
+          onClick={(e) => {
+            e.preventDefault();
+            // Open monitoring dashboard in new tab and navigate to task
+            window.open(`http://localhost:3000#task-${taskId}`, '_blank');
+          }}
+          title={`View task ${taskId} in monitoring dashboard`}
+        >
+          #{taskId}
+        </a>
+      );
+
+      lastIndex = match.index + match[0].length;
+    }
+
+    // Add remaining text
+    if (lastIndex < text.length) {
+      parts.push(text.substring(lastIndex));
+    }
+
+    return parts.length > 0 ? parts : text;
   };
 
   // Handle input change and command filtering
@@ -475,12 +515,36 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                                 </div>
                               );
                             },
+                            p({ children }: any) {
+                              // Process text nodes to linkify task IDs
+                              if (typeof children === 'string') {
+                                return <p>{linkifyTaskIds(children)}</p>;
+                              }
+                              // Handle arrays of children (mixed content)
+                              if (Array.isArray(children)) {
+                                const processedChildren = children.map((child, idx) => {
+                                  if (typeof child === 'string') {
+                                    return <React.Fragment key={idx}>{linkifyTaskIds(child)}</React.Fragment>;
+                                  }
+                                  return child;
+                                });
+                                return <p>{processedChildren}</p>;
+                              }
+                              return <p>{children}</p>;
+                            },
+                            text({ children }: any) {
+                              // Process plain text nodes
+                              if (typeof children === 'string') {
+                                return <>{linkifyTaskIds(children)}</>;
+                              }
+                              return <>{children}</>;
+                            },
                           }}
                         >
                           {msg.content}
                         </ReactMarkdown>
                       ) : (
-                        <p>{msg.content}</p>
+                        <p>{linkifyTaskIds(msg.content)}</p>
                       )}
                     </div>
                     <div className="message-actions">
