@@ -44,6 +44,78 @@ from core.exceptions import AMIGAError
 
 logger = logging.getLogger(__name__)
 
+
+def _consolidate_tool_calls(tool_calls: list[dict]) -> list[dict]:
+    """
+    Consolidate consecutive identical tool operations into single entries with count.
+
+    Args:
+        tool_calls: List of tool call dictionaries
+
+    Returns:
+        Consolidated list where consecutive identical operations are grouped
+    """
+    if not tool_calls:
+        return []
+
+    consolidated = []
+    current_group = None
+
+    for call in tool_calls:
+        # Define what makes operations "identical" (tool name and success status)
+        call_signature = (call.get("tool"), call.get("success", True), bool(call.get("has_error")))
+
+        if current_group is None:
+            # Start first group
+            current_group = {"calls": [call], "signature": call_signature}
+        elif current_group["signature"] == call_signature:
+            # Same operation, add to group
+            current_group["calls"].append(call)
+        else:
+            # Different operation, finalize current group
+            consolidated.append(_finalize_group(current_group))
+            current_group = {"calls": [call], "signature": call_signature}
+
+    # Finalize last group
+    if current_group:
+        consolidated.append(_finalize_group(current_group))
+
+    return consolidated
+
+
+def _finalize_group(group: dict) -> dict:
+    """
+    Convert a group of identical operations into a single consolidated entry.
+
+    Args:
+        group: Dict with 'calls' list and 'signature' tuple
+
+    Returns:
+        Single tool call dict representing the group
+    """
+    calls = group["calls"]
+
+    if len(calls) == 1:
+        # Single operation, return as-is
+        return calls[0]
+
+    # Multiple identical operations, consolidate
+    first = calls[0]
+    last = calls[-1]
+
+    return {
+        "tool": first.get("tool"),
+        "timestamp": first.get("timestamp"),
+        "duration": sum(c.get("duration", 0) for c in calls),
+        "has_error": first.get("has_error"),
+        "error": first.get("error"),
+        "success": first.get("success", True),
+        "parameters": first.get("parameters"),
+        "error_category": first.get("error_category"),
+        "count": len(calls),  # Indicate this represents multiple operations
+        "last_timestamp": last.get("timestamp"),  # Track time range
+    }
+
 # Initialize Flask app
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
 app.config["TEMPLATES_AUTO_RELOAD"] = True
@@ -1736,6 +1808,9 @@ def session_tool_usage(session_id: str):
                     }
                 )
 
+            # Consolidate consecutive identical operations
+            tool_calls = _consolidate_tool_calls(tool_calls)
+
             summary = {
                 "session_id": session_id,
                 "total_tools_used": len(db_tool_usage),
@@ -1815,6 +1890,9 @@ def session_tool_usage(session_id: str):
                 for line in f:
                     if line.strip():
                         tool_calls.append(json.loads(line))
+
+        # Consolidate consecutive identical operations
+        tool_calls = _consolidate_tool_calls(tool_calls)
 
         logger.info(f"Found {len(tool_calls)} tool usage records in JSONL files for session {session_id}")
 
