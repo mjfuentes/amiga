@@ -4,6 +4,7 @@ Collects and aggregates data from all tracking systems
 """
 
 import logging
+import shutil
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -212,11 +213,33 @@ class MetricsAggregator:
                 }
             )
 
+        # Disk space monitoring
+        disk_space = {}
+        try:
+            usage = shutil.disk_usage(str(data_dir.parent))
+            total_gb = usage.total / (1024**3)
+            used_gb = usage.used / (1024**3)
+            free_gb = usage.free / (1024**3)
+            percent_used = (usage.used / usage.total) * 100
+
+            disk_space = {
+                "total_gb": round(total_gb, 2),
+                "used_gb": round(used_gb, 2),
+                "free_gb": round(free_gb, 2),
+                "percent_used": round(percent_used, 1),
+                "warning": free_gb < 15,  # Warn if less than 15GB free
+                "critical": free_gb < 10,  # Critical if less than 10GB free
+            }
+        except Exception as e:
+            logger.error(f"Failed to get disk space: {e}")
+            disk_space = {"error": str(e)}
+
         return {
             "data_file_sizes_mb": file_sizes,
             "active_tasks_count": active_tasks_count,
             "recent_errors_24h": len(recent_errors),
             "recent_errors": recent_errors,
+            "disk_space": disk_space,
             "timestamp": datetime.now().isoformat(),
         }
 
