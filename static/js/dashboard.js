@@ -410,12 +410,36 @@ function appendToolExecutionToModal(toolData) {
     if (lastCallElement) {
         const lastToolAttr = lastCallElement.getAttribute('data-tool');
         const lastParamsAttr = lastCallElement.getAttribute('data-params');
+        const lastStatusAttr = lastCallElement.getAttribute('data-status');
         const lastCountAttr = parseInt(lastCallElement.getAttribute('data-count') || '1', 10);
 
         const currentParams = JSON.stringify(toolCall.parameters);
 
-        // If identical to previous, increment count
-        if (lastToolAttr === toolCall.tool && lastParamsAttr === currentParams) {
+        // Check for running → completed lifecycle transition for SAME tool call
+        // This prevents duplicate entries when websocket sends both "start" and "complete" events
+        if (lastToolAttr === toolCall.tool && lastParamsAttr === currentParams &&
+            lastStatusAttr === 'running' && toolCall.status === 'completed') {
+            // Update the running entry to completed (merge lifecycle states)
+
+            // Save scroll state
+            const wasAtBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop <= scrollContainer.clientHeight + 50;
+
+            // Replace the running entry with completed version
+            const currentCalls = scrollContainer.querySelectorAll('.tool-call-entry').length;
+            const toolHtml = renderTerminalToolCall(toolCall, currentCalls);
+            lastCallElement.outerHTML = toolHtml;
+
+            // Restore scroll behavior
+            if (autoScrollEnabled || wasAtBottom) {
+                scrollToBottom();
+            }
+
+            return;
+        }
+
+        // If identical to previous (consolidation for repeated operations), increment count
+        if (lastToolAttr === toolCall.tool && lastParamsAttr === currentParams &&
+            lastStatusAttr === toolCall.status) {
             // Increment count on the consolidated entry
             toolCall.count = lastCountAttr + 1;
 
@@ -1412,7 +1436,7 @@ function renderTerminalToolCall(call, lineNumber) {
     // Build HTML - white text with colored highlights for key info
     const paramsJson = JSON.stringify(parameters);
     const count = call.count || 1;
-    let html = `<div class="tool-call-entry" data-tool="${escapeHtml(tool)}" data-params="${escapeHtml(paramsJson)}" data-count="${count}" style="padding: 0.125rem 0; line-height: 1.3; color: #e6edf3;">`;
+    let html = `<div class="tool-call-entry" data-tool="${escapeHtml(tool)}" data-params="${escapeHtml(paramsJson)}" data-status="${escapeHtml(status)}" data-count="${count}" style="padding: 0.125rem 0; line-height: 1.3; color: #e6edf3;">`;
 
     html += summaryText;
 
