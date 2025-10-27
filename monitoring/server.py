@@ -1116,11 +1116,8 @@ def task_tool_usage(task_id):
             (query_id,),
         )
 
-        tool_calls = []
-        tools_by_type = defaultdict(int)
-        tools_with_errors = 0
-        worker_chain = []
-
+        # Collect all raw records first
+        raw_records = []
         for row in cursor.fetchall():
             timestamp = row[0]
             tool_name = row[1]
@@ -1136,37 +1133,70 @@ def task_tool_usage(task_id):
                 except json.JSONDecodeError:
                     logger.warning(f"Failed to parse parameters JSON for {tool_name}: {parameters_json[:100]}")
 
+            raw_records.append({
+                "timestamp": timestamp,
+                "tool_name": tool_name,
+                "success": success,
+                "error": error,
+                "parameters": parameters,
+            })
+
+        # Deduplicate: For each tool call, keep only the completed record (success != NULL)
+        # Group by (tool_name, timestamp_prefix) where timestamp_prefix is first 19 chars (YYYY-MM-DDTHH:MM:SS)
+        # This groups pre+post hook entries for the same tool call
+        from collections import defaultdict
+        tool_groups = defaultdict(list)
+        for record in raw_records:
+            # Group key: tool_name + timestamp prefix (to second precision)
+            timestamp_prefix = record["timestamp"][:19] if len(record["timestamp"]) >= 19 else record["timestamp"]
+            key = (record["tool_name"], timestamp_prefix)
+            tool_groups[key].append(record)
+
+        # For each group, prefer completed records (success != NULL) over in-progress (success = NULL)
+        tool_calls = []
+        tools_by_type = defaultdict(int)
+        tools_with_errors = 0
+        worker_chain = []
+
+        for (tool_name, timestamp_prefix), records in tool_groups.items():
+            # If multiple records, prefer completed (success != NULL) over in-progress (success = NULL)
+            completed = [r for r in records if r["success"] is not None]
+            record = completed[0] if completed else records[0]
+
             # Build tool call entry (match real-time WebSocket format)
             entry = {
-                "timestamp": timestamp,
-                "tool_name": tool_name,  # Match WebSocket format (not "tool")
-                "tool": tool_name,  # Keep for backward compatibility
-                "success": success,  # Include raw success value
-                "has_error": success is False,  # Only True if explicitly failed (not NULL/in-progress)
-                "error": error,  # Include error message
-                "output_preview": error if error else None,
-                "parameters": parameters,  # Include full parameters
-                "in_progress": success is None,  # Flag for in-progress tools (from pre-tool-use)
-                "duration_ms": 0,  # Not tracked yet, but include for format consistency
+                "timestamp": record["timestamp"],
+                "tool_name": record["tool_name"],
+                "tool": record["tool_name"],  # Keep for backward compatibility
+                "success": record["success"],
+                "has_error": record["success"] is False,
+                "error": record["error"],
+                "output_preview": record["error"] if record["error"] else None,
+                "parameters": record["parameters"],
+                "in_progress": record["success"] is None,
+                "duration_ms": 0,
             }
             tool_calls.append(entry)
 
             # Count by type
-            tools_by_type[tool_name] += 1
+            tools_by_type[record["tool_name"]] += 1
 
             # Count errors (only actual failures, not in-progress)
-            if success is False:
+            if record["success"] is False:
                 tools_with_errors += 1
 
             # Track worker spawning (Task tool calls)
-            if tool_name == "Task":
+            if record["tool_name"] == "Task":
                 worker_chain.append(
                     {
                         "worker": "unknown",
                         "description": "Task agent spawned",
-                        "timestamp": timestamp,
+                        "timestamp": record["timestamp"],
                     }
                 )
+
+        # Sort by timestamp for display order
+        tool_calls.sort(key=lambda x: x["timestamp"])
 
         # Try to enrich with output_preview from session JSONL files
         # This is especially important for TodoWrite calls to show planning progress
