@@ -884,35 +884,88 @@ class Database:
         output_tokens: int | None = None,
         cache_creation_tokens: int | None = None,
         cache_read_tokens: int | None = None,
+        parameters: dict | None = None,
     ) -> bool:
         """
         Update the most recent in-progress tool usage record with completion data.
 
-        Finds the most recent record for task_id + tool_name where success IS NULL
+        Finds the most recent record for task_id + tool_name + parameters where success IS NULL
         and updates it with completion data from post-tool-use hook.
+
+        Args:
+            parameters: Tool parameters used to match the specific tool invocation
 
         Returns:
             bool: True if record was updated, False if no matching record found
         """
+        import hashlib
         cursor = self.conn.cursor()
 
-        # Find most recent in-progress record for this task + tool
-        cursor.execute(
-            """
-            SELECT id FROM tool_usage
-            WHERE task_id = ? AND tool_name = ? AND success IS NULL
-            ORDER BY timestamp DESC
-            LIMIT 1
-            """,
-            (task_id, tool_name)
-        )
+        # Find most recent in-progress record for this task + tool + parameters
+        # Use timestamp proximity (within 5 seconds) to handle concurrent calls
+        if parameters:
+            # Extract distinguishing parameter for matching
+            if tool_name in ('Read', 'Write', 'Edit'):
+                param_key = parameters.get('file_path', '')
+            elif tool_name == 'Bash':
+                cmd = parameters.get('command', '')
+                param_key = hashlib.md5(cmd.encode()).hexdigest()[:8]
+            elif tool_name in ('Grep', 'Glob'):
+                param_key = parameters.get('pattern', '')[:50]
+            else:
+                param_key = hashlib.md5(json.dumps(parameters, sort_keys=True).encode()).hexdigest()[:8]
 
-        row = cursor.fetchone()
-        if not row:
-            logger.warning(f"No in-progress tool usage record found for {task_id} - {tool_name}")
+            # Find matching in-progress record by parameters
+            cursor.execute(
+                """
+                SELECT id, parameters FROM tool_usage
+                WHERE task_id = ? AND tool_name = ? AND success IS NULL
+                AND timestamp >= datetime('now', '-5 seconds')
+                ORDER BY timestamp DESC
+                """,
+                (task_id, tool_name)
+            )
+
+            # Find first record with matching parameters
+            record_id = None
+            for row in cursor.fetchall():
+                stored_params_json = row[1]
+                if stored_params_json:
+                    try:
+                        stored_params = json.loads(stored_params_json)
+                        # Extract same key from stored params
+                        if tool_name in ('Read', 'Write', 'Edit'):
+                            stored_key = stored_params.get('file_path', '')
+                        elif tool_name == 'Bash':
+                            cmd = stored_params.get('command', '')
+                            stored_key = hashlib.md5(cmd.encode()).hexdigest()[:8]
+                        elif tool_name in ('Grep', 'Glob'):
+                            stored_key = stored_params.get('pattern', '')[:50]
+                        else:
+                            stored_key = hashlib.md5(json.dumps(stored_params, sort_keys=True).encode()).hexdigest()[:8]
+
+                        if stored_key == param_key:
+                            record_id = row[0]
+                            break
+                    except (json.JSONDecodeError, TypeError):
+                        continue
+        else:
+            # No parameters provided, fall back to most recent
+            cursor.execute(
+                """
+                SELECT id FROM tool_usage
+                WHERE task_id = ? AND tool_name = ? AND success IS NULL
+                ORDER BY timestamp DESC
+                LIMIT 1
+                """,
+                (task_id, tool_name)
+            )
+            row = cursor.fetchone()
+            record_id = row[0] if row else None
+
+        if not record_id:
+            logger.warning(f"No matching in-progress tool usage record found for {task_id} - {tool_name}")
             return False
-
-        record_id = row[0]
 
         # Update the record with completion data
         cursor.execute(
@@ -1075,35 +1128,94 @@ class Database:
         Get tool usage records for a specific session/task.
         Session ID is stored as task_id in the database.
 
+        Deduplicates pre-hook (success=NULL) and post-hook (success=True/False) records
+        by keeping only the latest completed version of each tool call.
+
         Args:
             session_id: Session ID (same as task_id in tool_usage table)
 
         Returns:
-            List of tool usage records with tool, timestamp, duration, error fields
+            List of deduplicated tool usage records with tool, timestamp, duration, error fields
         """
         cursor = self.conn.cursor()
         cursor.execute(
             """
-            SELECT tool_name, timestamp, duration_ms, error, success, parameters, error_category
+            SELECT tool_name, timestamp, duration_ms, error, success, parameters, error_category, id
             FROM tool_usage
             WHERE task_id = ?
-            ORDER BY timestamp ASC
+            ORDER BY timestamp ASC, id ASC
         """,
             (session_id,),
         )
 
-        return [
-            {
-                "tool": row[0],
-                "timestamp": row[1],
-                "duration": row[2],
-                "error": row[3],
-                "success": row[4],
-                "parameters": json.loads(row[5]) if row[5] else None,
-                "error_category": row[6],
-            }
-            for row in cursor.fetchall()
-        ]
+        # Group by (tool_name, timestamp_second, parameters) to find duplicates
+        # Keep completed record (success != NULL) or most recent if all NULL
+        from collections import defaultdict
+        import hashlib
+        records_by_key = defaultdict(list)
+
+        for row in cursor.fetchall():
+            tool_name = row[0]
+            timestamp = row[1]
+            duration_ms = row[2]
+            error = row[3]
+            success = row[4]
+            parameters_json = row[5]
+            error_category = row[6]
+            record_id = row[7]
+
+            # Parse parameters to extract distinguishing info
+            try:
+                params = json.loads(parameters_json) if parameters_json else {}
+            except json.JSONDecodeError:
+                params = {}
+
+            # Create distinguishing key based on tool type and parameters
+            # This ensures we only group pre/post hooks of the SAME tool invocation
+            if tool_name in ('Read', 'Write', 'Edit'):
+                # File tools: use file_path
+                param_key = params.get('file_path', '')
+            elif tool_name == 'Bash':
+                # Bash: use command hash (commands can be long)
+                cmd = params.get('command', '')
+                param_key = hashlib.md5(cmd.encode()).hexdigest()[:8]
+            elif tool_name in ('Grep', 'Glob'):
+                # Search tools: use pattern
+                param_key = params.get('pattern', '')[:50]
+            else:
+                # Other tools: hash all parameters
+                param_key = hashlib.md5(json.dumps(params, sort_keys=True).encode()).hexdigest()[:8]
+
+            # Group by tool_name + timestamp (second precision) + parameter key
+            key = (tool_name, timestamp[:19], param_key)
+            records_by_key[key].append({
+                'id': record_id,
+                'tool_name': tool_name,
+                'timestamp': timestamp,
+                'duration_ms': duration_ms,
+                'error': error,
+                'success': success,
+                'parameters_json': parameters_json,
+                'error_category': error_category,
+            })
+
+        # Deduplicate: prefer completed (success != NULL) over in-progress (success == NULL)
+        result = []
+        for key, records in sorted(records_by_key.items()):
+            completed = [r for r in records if r['success'] is not None]
+            selected = completed[-1] if completed else records[-1]
+
+            result.append({
+                "tool": selected['tool_name'],
+                "timestamp": selected['timestamp'],
+                "duration": selected['duration_ms'],
+                "error": selected['error'],
+                "success": selected['success'],
+                "parameters": json.loads(selected['parameters_json']) if selected['parameters_json'] else None,
+                "error_category": selected['error_category'],
+            })
+
+        return result
 
     def cleanup_old_tool_usage(self, days: int = 30) -> int:
         """Delete tool usage records older than specified days"""

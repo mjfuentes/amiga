@@ -1105,21 +1105,24 @@ def task_tool_usage(task_id):
         query_id = session_uuid if session_uuid else task_id
 
         # Get tool usage from database
+        # Deduplicate by keeping only the latest version of each tool call
+        # This handles the pre-hook (success=NULL) + post-hook (success=True/False) pattern
         cursor = task_manager.db.conn.cursor()
         cursor.execute(
             """
-            SELECT timestamp, tool_name, success, error, parameters
+            SELECT timestamp, tool_name, success, error, parameters, id
             FROM tool_usage
             WHERE task_id = ?
-            ORDER BY timestamp
+            ORDER BY timestamp, id
             """,
             (query_id,),
         )
 
-        tool_calls = []
-        tools_by_type = defaultdict(int)
-        tools_with_errors = 0
-        worker_chain = []
+        # Group by (tool_name, timestamp_minute) to find duplicates
+        # Keep the record with success NOT NULL (completed), or most recent if all NULL
+        from collections import defaultdict
+        import hashlib
+        records_by_key = defaultdict(list)
 
         for row in cursor.fetchall():
             timestamp = row[0]
@@ -1127,6 +1130,58 @@ def task_tool_usage(task_id):
             success = row[2]
             error = row[3]
             parameters_json = row[4]
+            record_id = row[5]
+
+            # Parse parameters to extract distinguishing info
+            try:
+                params = json.loads(parameters_json) if parameters_json else {}
+            except json.JSONDecodeError:
+                params = {}
+
+            # Create distinguishing key based on tool type and parameters
+            # This ensures we only group pre/post hooks of the SAME tool invocation
+            if tool_name in ('Read', 'Write', 'Edit'):
+                # File tools: use file_path
+                param_key = params.get('file_path', '')
+            elif tool_name == 'Bash':
+                # Bash: use command hash (commands can be long)
+                cmd = params.get('command', '')
+                param_key = hashlib.md5(cmd.encode()).hexdigest()[:8]
+            elif tool_name in ('Grep', 'Glob'):
+                # Search tools: use pattern
+                param_key = params.get('pattern', '')[:50]
+            else:
+                # Other tools: hash all parameters
+                param_key = hashlib.md5(json.dumps(params, sort_keys=True).encode()).hexdigest()[:8]
+
+            # Group by tool_name + timestamp (rounded to second) + parameter key
+            # This catches pre-hook and post-hook of the SAME tool call
+            key = (tool_name, timestamp[:19], param_key)
+            records_by_key[key].append({
+                'id': record_id,
+                'timestamp': timestamp,
+                'tool_name': tool_name,
+                'success': success,
+                'error': error,
+                'parameters_json': parameters_json,
+            })
+
+        # Deduplicate: for each key, keep completed version or most recent
+        tool_calls = []
+        tools_by_type = defaultdict(int)
+        tools_with_errors = 0
+        worker_chain = []
+
+        for key, records in sorted(records_by_key.items()):
+            # Prefer completed records (success != NULL) over in-progress (success == NULL)
+            completed = [r for r in records if r['success'] is not None]
+            selected = completed[-1] if completed else records[-1]
+
+            timestamp = selected['timestamp']
+            tool_name = selected['tool_name']
+            success = selected['success']
+            error = selected['error']
+            parameters_json = selected['parameters_json']
 
             # Parse parameters JSON
             parameters = {}

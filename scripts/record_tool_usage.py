@@ -240,6 +240,7 @@ def main():
         db = Database()
 
         # Update existing tool usage record (created by pre-tool-use hook)
+        # Pass parameters to match the correct in-progress record (handles concurrent calls)
         # If no record exists (shouldn't happen), fall back to creating new one
         updated = db.update_tool_usage(
             task_id=task_id,
@@ -251,6 +252,7 @@ def main():
             output_tokens=token_data["output_tokens"],
             cache_creation_tokens=token_data["cache_creation_tokens"],
             cache_read_tokens=token_data["cache_read_tokens"],
+            parameters=parameters,  # Pass parameters for matching
         )
 
         # Fallback: if no in-progress record found, create new one
