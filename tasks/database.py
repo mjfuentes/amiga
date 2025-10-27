@@ -791,6 +791,52 @@ class Database:
 
         return updated_count
 
+    def cleanup_all_pending_tasks(self, user_id: int | None = None) -> int:
+        """
+        Mark all pending tasks as stopped with cleanup message.
+        Can optionally filter by user_id.
+        
+        Args:
+            user_id: Optional user ID to filter tasks (None = all users)
+            
+        Returns:
+            Number of tasks cleaned up
+        """
+        now = datetime.now().isoformat()
+        cursor = self.conn.cursor()
+        
+        if user_id is not None:
+            cursor.execute(
+                """
+                UPDATE tasks
+                SET status = 'stopped',
+                    error = 'Cleaned up by user request',
+                    updated_at = ?
+                WHERE status = 'pending' AND user_id = ?
+            """,
+                (now, user_id),
+            )
+        else:
+            cursor.execute(
+                """
+                UPDATE tasks
+                SET status = 'stopped',
+                    error = 'Cleaned up by user request',
+                    updated_at = ?
+                WHERE status = 'pending'
+            """,
+                (now,),
+            )
+        
+        self.conn.commit()
+        
+        updated_count = cursor.rowcount
+        if updated_count > 0:
+            user_msg = f"for user {user_id}" if user_id else "across all users"
+            logger.info(f"Cleaned up {updated_count} pending tasks {user_msg}")
+        
+        return updated_count
+
     def mark_all_running_as_stopped(self) -> int:
         """
         Mark all running tasks as stopped during shutdown.
