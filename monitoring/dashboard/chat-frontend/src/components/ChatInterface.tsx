@@ -49,6 +49,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const lastMessageCountRef = useRef(messages.length);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputListenerAttachedRef = useRef(false);
+  const handleSendRef = useRef<((message: string) => Promise<void>) | null>(null);
 
   // Helper function to focus the input
   const focusInput = () => {
@@ -99,9 +100,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               // Insert command and immediately send it
               setInputValue(selectedCommand);
               setShowCommands(false);
-              // Send the command after state update
+              // Send the command using the ref
               setTimeout(() => {
-                handleSend(selectedCommand);
+                if (handleSendRef.current) {
+                  handleSendRef.current(selectedCommand);
+                }
               }, 0);
             }
             break;
@@ -272,6 +275,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       // Sanitize message to strip any HTML/XML tags from paste operations
       const cleanMessage = sanitizeMessage(message);
 
+      // Clear input immediately after sending
+      setInputValue('');
+
       // Only handle /clear and /help locally, send all other commands to backend
       if (cleanMessage === '/clear') {
         // Only animate if there are messages (chat has begun)
@@ -318,11 +324,13 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         // Re-focus after sending
         setTimeout(focusInput, 100);
       }
-      setInputValue('');
     }
   };
 
-
+  // Update ref when handleSend changes
+  useEffect(() => {
+    handleSendRef.current = handleSend;
+  }, [handleSend]);
 
   // Global paste handler to strip HTML formatting
   useEffect(() => {

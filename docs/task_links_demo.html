@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Links Demo</title>
+    <style>
+        body {
+            font-family: ui-monospace, 'SF Mono', Monaco, monospace;
+            background: #0a0a0a;
+            color: #d0d0d0;
+            padding: 2rem;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #e07856;
+            border-bottom: 2px solid #2a2a2a;
+            padding-bottom: 1rem;
+        }
+        .demo-section {
+            background: #151515;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+        }
+        .demo-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #d0d0d0;
+        }
+        .message {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 4px;
+            padding: 1rem;
+            margin: 0.75rem 0;
+            line-height: 1.6;
+        }
+        .message-label {
+            font-size: 0.75rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+
+        /* Task link styling - matches chat interface */
+        a.task-link {
+            color: #e07856;
+            font-weight: 600;
+            padding: 0.125rem 0.25rem;
+            border-radius: 3px;
+            background: rgba(224, 120, 86, 0.1);
+            border-bottom: 1px solid rgba(224, 120, 86, 0.3);
+            transition: all 0.2s ease;
+            text-decoration: none;
+        }
+
+        a.task-link:hover {
+            color: #ff9472;
+            background: rgba(224, 120, 86, 0.2);
+            border-bottom-color: #ff9472;
+            transform: translateY(-1px);
+        }
+
+        a.task-link:active {
+            transform: translateY(0);
+        }
+
+        .regular-link {
+            color: #6a9fb5;
+            text-decoration: none;
+            border-bottom: 1px solid transparent;
+            transition: all 0.2s ease;
+        }
+
+        .regular-link:hover {
+            color: #8ab;
+            border-bottom-color: #8ab;
+        }
+
+        .code-inline {
+            background: #1a1a1a;
+            color: #8ab;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            border: 1px solid #2a2a2a;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.875em;
+        }
+
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .feature-list li {
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #2a2a2a;
+        }
+
+        .feature-list li:last-child {
+            border-bottom: none;
+        }
+
+        .feature-list li::before {
+            content: "✓";
+            color: #6b8;
+            font-weight: bold;
+            margin-right: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔗 Task Links in Chat Interface</h1>
+
+    <div class="demo-section">
+        <div class="demo-title">Pattern Recognition</div>
+        <p>Task IDs following the pattern <code class="code-inline">#task_&lt;id&gt;</code> are automatically converted to clickable links.</p>
+    </div>
+
+    <div class="demo-section">
+        <div class="demo-title">Example Messages</div>
+
+        <div class="message">
+            <div class="message-label">Assistant Message</div>
+            <p>I've created <a href="#" class="task-link">#task_abc123</a> to handle your request. You can monitor progress in the dashboard.</p>
+        </div>
+
+        <div class="message">
+            <div class="message-label">Assistant Message</div>
+            <p>Task <a href="#" class="task-link">#task_fix_bug_20241027</a> has completed successfully. The changes are now live.</p>
+        </div>
+
+        <div class="message">
+            <div class="message-label">User Message</div>
+            <p>What's the status of <a href="#" class="task-link">#task_abc123</a>?</p>
+        </div>
+
+        <div class="message">
+            <div class="message-label">Mixed Content</div>
+            <p>Check <a href="#" class="task-link">#task_deploy_20241027</a> for deployment logs. Also see <a href="https://docs.example.com" class="regular-link">documentation</a> for more info.</p>
+        </div>
+    </div>
+
+    <div class="demo-section">
+        <div class="demo-title">Features</div>
+        <ul class="feature-list">
+            <li>Automatic detection of task ID patterns</li>
+            <li>Distinct orange styling for easy identification</li>
+            <li>Opens monitoring dashboard in new tab</li>
+            <li>Hover effects provide visual feedback</li>
+            <li>Works in both user and assistant messages</li>
+            <li>Compatible with markdown formatting</li>
+        </ul>
+    </div>
+
+    <div class="demo-section">
+        <div class="demo-title">Supported Patterns</div>
+        <div class="message">
+            <p>
+                <a href="#" class="task-link">#task_abc123</a> - Alphanumeric ID<br>
+                <a href="#" class="task-link">#task_20241027_deploy</a> - Date-prefixed ID<br>
+                <a href="#" class="task-link">#task_fix_bug_auth</a> - Descriptive ID<br>
+                <a href="#" class="task-link">#task_TEST_ENV_123</a> - Uppercase allowed
+            </p>
+        </div>
+    </div>
+
+    <div class="demo-section">
+        <div class="demo-title">Visual Comparison</div>
+        <div class="message">
+            <p>
+                <strong>Task Link:</strong> <a href="#" class="task-link">#task_abc123</a> (orange, bold, highlighted)<br>
+                <strong>Regular Link:</strong> <a href="#" class="regular-link">documentation</a> (blue, standard)<br>
+                <strong>Inline Code:</strong> <code class="code-inline">#task_abc123</code> (blue, monospace, no link)
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // Intercept clicks to show demo behavior
+        document.querySelectorAll('a.task-link').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const taskId = link.textContent;
+                alert(`Would open monitoring dashboard for ${taskId}\n\nURL: http://localhost:3000#${taskId}`);
+            });
+        });
+    </script>
+</body>
+</html>
