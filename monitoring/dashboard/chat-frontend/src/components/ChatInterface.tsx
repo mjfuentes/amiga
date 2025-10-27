@@ -45,10 +45,28 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [isTyping, setIsTyping] = useState(false);
   const [showCommands, setShowCommands] = useState(false);
   const [filteredCommands, setFilteredCommands] = useState(COMMANDS);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
   const lastMessageCountRef = useRef(messages.length);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputListenerAttachedRef = useRef(false);
 
+  // Helper function to focus the input
+  const focusInput = () => {
+    // Find the textarea within the MessageInput component
+    const textarea = document.querySelector('.cs-message-input__content-editor') as HTMLTextAreaElement;
+    if (textarea) {
+      textarea.focus();
+      inputRef.current = textarea;
+    }
+  };
+
+  // Handle command selection
+  const selectCommand = useCallback((command: string) => {
+    setInputValue(command + ' ');
+    setShowCommands(false);
+    // Re-focus after selecting command
+    focusInput();
+  }, []);
 
   // Attach input listener for command autocomplete
   const attachInputListener = useCallback(() => {
@@ -62,17 +80,44 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         handleInputChange(value);
       };
 
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (!showCommands || filteredCommands.length === 0) return;
+
+        switch (e.key) {
+          case 'ArrowDown':
+            e.preventDefault();
+            setHighlightedIndex(prev => (prev + 1) % filteredCommands.length);
+            break;
+          case 'ArrowUp':
+            e.preventDefault();
+            setHighlightedIndex(prev => (prev - 1 + filteredCommands.length) % filteredCommands.length);
+            break;
+          case 'Enter':
+            if (showCommands) {
+              e.preventDefault();
+              selectCommand(filteredCommands[highlightedIndex].command);
+            }
+            break;
+          case 'Escape':
+            e.preventDefault();
+            setShowCommands(false);
+            break;
+        }
+      };
+
       textarea.addEventListener('input', handleInput);
+      textarea.addEventListener('keydown', handleKeyDown);
       inputListenerAttachedRef.current = true;
       inputRef.current = textarea;
 
       // Cleanup on unmount
       return () => {
         textarea.removeEventListener('input', handleInput);
+        textarea.removeEventListener('keydown', handleKeyDown);
         inputListenerAttachedRef.current = false;
       };
     }
-  }, []);
+  }, [showCommands, filteredCommands, highlightedIndex, selectCommand]);
 
   // Focus the input on mount and when messages change
   useEffect(() => {
@@ -104,16 +149,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       return cleanup;
     }
   }, [connected, attachInputListener]);
-
-  // Helper function to focus the input
-  const focusInput = () => {
-    // Find the textarea within the MessageInput component
-    const textarea = document.querySelector('.cs-message-input__content-editor') as HTMLTextAreaElement;
-    if (textarea) {
-      textarea.focus();
-      inputRef.current = textarea;
-    }
-  };
 
   // Copy to clipboard helper
   const copyToClipboard = (text: string) => {
@@ -158,18 +193,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         cmd.description.toLowerCase().includes(searchTerm)
       );
       setFilteredCommands(filtered);
+      setHighlightedIndex(0); // Reset to first command
       setShowCommands(true);
     } else {
       setShowCommands(false);
     }
-  };
-
-  // Handle command selection
-  const selectCommand = (command: string) => {
-    setInputValue(command + ' ');
-    setShowCommands(false);
-    // Re-focus after selecting command
-    focusInput();
   };
 
   // Sanitize message before sending (strip HTML tags)
@@ -301,10 +329,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             <div className="landing-input-wrapper">
               {showCommands && filteredCommands.length > 0 && (
                 <div className="command-suggestions">
-                  {filteredCommands.map(cmd => (
+                  {filteredCommands.map((cmd, idx) => (
                     <div
                       key={cmd.command}
-                      className="command-suggestion"
+                      className={`command-suggestion ${idx === highlightedIndex ? 'highlighted' : ''}`}
                       onClick={() => selectCommand(cmd.command)}
                     >
                       <code className="command-name">{cmd.command}</code>
@@ -445,10 +473,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           </MessageList>
           {showCommands && filteredCommands.length > 0 && (
             <div className="command-suggestions">
-              {filteredCommands.map(cmd => (
+              {filteredCommands.map((cmd, idx) => (
                 <div
                   key={cmd.command}
-                  className="command-suggestion"
+                  className={`command-suggestion ${idx === highlightedIndex ? 'highlighted' : ''}`}
                   onClick={() => selectCommand(cmd.command)}
                 >
                   <code className="command-name">{cmd.command}</code>

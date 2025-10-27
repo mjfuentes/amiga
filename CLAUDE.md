@@ -4,7 +4,7 @@
 
 ## Project Overview
 
-**AMIGA (Autonomous Modular Interactive Graphical Agent)** - Telegram bot with intelligent routing between Claude API (Haiku) for Q&A and Claude Code CLI (Sonnet) for coding tasks.
+**AMIGA (Autonomous Modular Interactive Graphical Agent)** - Web-based chat interface with intelligent routing between Claude API (Haiku) for Q&A and Claude Code CLI (Sonnet) for coding tasks.
 
 **Core Philosophy**: Right model for the right task. Fast & cheap for questions, powerful & thorough for code.
 
@@ -19,7 +19,6 @@
 
 **Other Key Components**:
 - **Monitoring Dashboard**: `templates/dashboard.html` (SSE-based metrics UI)
-- **Telegram Bot**: `core/main.py` (Telegram bot handlers)
 - **Claude Code Sessions**: `.claude/` (agent configs, hooks)
 - **Playwright MCP**: Browser automation for frontend testing (see Playwright MCP Integration section)
 
@@ -213,13 +212,12 @@ grep "task_id=abc123" logs/bot.log
 ```
 
 **What deploy.sh does**:
-- Stops launchd services if running
-- Kills existing bot and monitoring server processes
+- Stops launchd service if running
+- Kills existing monitoring server process
 - Builds React frontend (if chat component)
 - Deploys build to `static/chat/`
 - Restarts monitoring server (with venv Python + PYTHONPATH)
-- Restarts Telegram bot (with venv Python + PYTHONPATH)
-- Verifies both services started successfully
+- Verifies service started successfully
 
 **Pre-commit enforcement**: Hook `chat-frontend-deploy` blocks commits if:
 - Source files in `monitoring/dashboard/src/` modified
@@ -233,8 +231,8 @@ grep "task_id=abc123" logs/bot.log
 5. Commit: Pre-commit hook verifies deployment
 
 **Deployment options**:
-- `./deploy.sh` - Deploy all components (chat + verify dashboard) + restart services
-- `./deploy.sh chat` - Deploy chat only + restart services (recommended)
+- `./deploy.sh` - Deploy all components (chat + verify dashboard) + restart monitoring server
+- `./deploy.sh chat` - Deploy chat only + restart monitoring server (recommended)
 - `./deploy.sh dashboard` - Verify dashboard templates only (no restart)
 
 **Why this matters**:
@@ -258,10 +256,6 @@ agentlab/
 ├── claude/              # Claude AI integration
 │   ├── api_client.py    # Claude API (Haiku - Q&A routing)
 │   └── code_cli.py      # Claude Code CLI sessions (Sonnet - coding)
-├── messaging/           # Telegram layer
-│   ├── formatter.py     # Telegram message formatting
-│   ├── queue.py         # Per-user message serialization
-│   └── rate_limiter.py  # Rate limiting
 ├── monitoring/          # Dashboard & metrics
 │   ├── server.py        # Web dashboard (Flask + SSE)
 │   ├── metrics.py       # Real-time metrics from hooks
@@ -761,9 +755,7 @@ cp .env.example .env
 ### Required Environment Variables
 
 ```bash
-TELEGRAM_BOT_TOKEN       # From @BotFather
 ANTHROPIC_API_KEY        # For Claude API (Haiku)
-ALLOWED_USERS            # Comma-separated Telegram user IDs
 WORKSPACE_PATH           # Base path for repositories (/Users/matifuentes/Workspace)
 ```
 
@@ -777,16 +769,16 @@ ANTHROPIC_ADMIN_API_KEY          # For usage API sync (optional)
 LOG_LEVEL=INFO                   # DEBUG, INFO, WARNING, ERROR
 ```
 
-### Running the Bot
+### Running the Application
 
 **Recommended (production-like)**:
 ```bash
-# Start all services (bot + monitoring) with proper environment
+# Deploy and start monitoring server
 ./deploy.sh chat
 
-# Services run in background
-# Access: http://localhost:3000 (dashboard), http://localhost:3000/chat (chat UI)
-# Logs: tail -f logs/bot.log, tail -f logs/monitoring.log
+# Service runs in background
+# Access: http://localhost:3000/chat (chat UI), http://localhost:3000 (metrics dashboard)
+# Logs: tail -f logs/monitoring.log
 ```
 
 **Manual (development)**:
@@ -794,18 +786,15 @@ LOG_LEVEL=INFO                   # DEBUG, INFO, WARNING, ERROR
 # Activate venv
 source venv/bin/activate
 
-# Run bot (foreground)
-python core/main.py
-
-# Run monitoring dashboard (separate terminal, foreground)
+# Run monitoring server (includes chat interface)
 python monitoring/server.py
-# Open http://localhost:3000
+# Open http://localhost:3000/chat
 ```
 
 **Notes**:
 - `deploy.sh` handles PYTHONPATH setup automatically
 - Manual mode requires running from project root for imports to work
-- Manual mode runs services in foreground (good for debugging)
+- Manual mode runs service in foreground (good for debugging)
 
 ## Project-Specific Patterns
 
@@ -865,15 +854,15 @@ BACKGROUND_TASK|task_description|user_message
 
 ### Session Management
 
-**Per-user isolation**: Each Telegram user has independent:
+**Per-user isolation**: Each web user has independent:
 - Conversation history (`core/session.py`)
-- Message queue (serializes requests per user)
+- WebSocket connection
 - Cost tracking
 - Active tasks
 
 **History limits**:
 - Max 10 messages in memory
-- Cleared on `/clear` or timeout
+- Cleared on session timeout
 
 ### Agent Communication
 
@@ -890,7 +879,7 @@ await agent_pool.submit(
 **Agent → User**:
 - Agents return summary strings
 - Orchestrator aggregates results
-- Bot formats for Telegram (4096 char chunks)
+- Server sends via WebSocket to chat UI
 
 ### Logging Strategy
 
@@ -969,12 +958,6 @@ BACKGROUND_TASK|Fix bug|Fixing the bug
 
 **Solution**: Check `.claude/settings.local.json` for allowed/denied commands. Add to allow list if needed.
 
-### 7. **Rate Limit Confusion**
-
-**Problem**: Telegram rate limits are PER USER (30/min, 500/hour), not global.
-
-**Solution**: `messaging/queue.py` handles per-user serialization. Don't add global limits.
-
 ## Testing
 
 ### Running Tests
@@ -1051,14 +1034,6 @@ Tests in `tests/test_*.py`
 
 **Example**: "group therapy" → matches "groovetherapy" or "group-therapy"
 
-### Telegram Message Chunking
-
-**Issue**: Telegram max message length is 4096 chars.
-
-**Solution**: `messaging/formatter.py` splits long responses into chunks, sends sequentially.
-
-**Caveat**: Code blocks may be split mid-block. Uses heuristics to avoid.
-
 ### Claude Code CLI Timeouts
 
 **Issue**: Complex tasks can take >5 minutes, exceeding default timeout.
@@ -1082,38 +1057,28 @@ Tests in `tests/test_*.py`
 
 ```bash
 # Check logs for errors
-tail -100 logs/bot.log | grep ERROR
 tail -100 logs/monitoring.log | grep ERROR
 
-# Restart all services (recommended)
+# Restart monitoring server
 ./deploy.sh chat
 
-# Stop services manually
-pkill -9 -f "python.*core/main.py"
+# Stop service manually
 pkill -9 -f "python.*monitoring/server.py"
 
-# Check if services are running
-ps aux | grep -E "python.*(core/main.py|monitoring/server.py)" | grep -v grep
+# Check if service is running
+ps aux | grep "python.*monitoring/server.py" | grep -v grep
 
 # Check running tasks
-# Use /status in Telegram
+# Monitoring dashboard: http://localhost:3000
 
 # Check cost usage
-# Use /usage in Telegram
-# Or: cat data/cost_tracking.json | jq
-
-# Clear stuck sessions
-# Use /clear in Telegram
-
-# Stop all background tasks
-# Use /stopall in Telegram
-
-# Restart bot
-# Use /restart in Telegram (owner only)
-# Or: ./deploy.sh chat (restarts both bot + monitoring)
+cat data/cost_tracking.json | jq
 
 # Check agent pool status
 # Monitoring dashboard: http://localhost:3000
+
+# Access chat interface
+# Open: http://localhost:3000/chat
 ```
 
 ## Performance Optimization
@@ -1153,7 +1118,6 @@ ps aux | grep -E "python.*(core/main.py|monitoring/server.py)" | grep -v grep
 - [Claude Code Docs](https://docs.claude.com/claude-code)
 - [Claude Code Best Practices](https://www.anthropic.com/engineering/claude-code-best-practices)
 - [Anthropic API Docs](https://docs.anthropic.com/)
-- [python-telegram-bot Docs](https://docs.python-telegram-bot.org/)
 
 ### Internal Docs
 

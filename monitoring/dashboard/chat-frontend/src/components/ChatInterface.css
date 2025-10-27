@@ -964,7 +964,8 @@
   border-bottom: none;
 }
 
-.command-suggestion:hover {
+.command-suggestion:hover,
+.command-suggestion.highlighted {
   background: #252525;
   border-left: 3px solid #4a4a4a;
   padding-left: calc(1rem - 3px);

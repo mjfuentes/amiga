@@ -109,16 +109,14 @@ deploy_dashboard() {
 restart_server() {
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "🔄 Restarting services..."
+    echo "🔄 Restarting monitoring server..."
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-    # Unload launchd services if running
-    launchctl unload ~/Library/LaunchAgents/com.amiga.telegrambot.plist 2>/dev/null || true
+    # Unload launchd service if running
     launchctl unload ~/Library/LaunchAgents/com.amiga.monitoring.plist 2>/dev/null || true
 
-    # Kill existing services
+    # Kill existing monitoring server
     pkill -9 -f "python.*monitoring/server.py" 2>/dev/null || true
-    pkill -9 -f "python.*core/main.py" 2>/dev/null || true
     sleep 2
 
     # Use venv python and set PYTHONPATH
@@ -140,28 +138,12 @@ restart_server() {
         exit 1
     fi
 
-    # Start bot
-    cd "$SCRIPT_DIR"
-    nohup env PYTHONPATH="$SCRIPT_DIR" "$PYTHON" core/main.py > logs/bot.log 2>&1 &
-    BOT_PID=$!
-    sleep 2
-
-    # Verify bot
-    if ps -p $BOT_PID > /dev/null 2>&1; then
-        echo "✅ Telegram bot started (PID: $BOT_PID)"
-    else
-        echo "❌ Failed to start bot (check logs/bot.log)"
-        tail -20 logs/bot.log
-        exit 1
-    fi
-
     echo ""
     echo "🌐 Access points:"
     echo "   Dashboard: http://localhost:3000"
     echo "   Chat:      http://localhost:3000/chat"
     echo ""
     echo "📝 Logs:"
-    echo "   Bot:       tail -f logs/bot.log"
     echo "   Monitor:   tail -f logs/monitoring.log"
     echo ""
     echo "💡 Hard refresh browser: Cmd+Shift+R (Mac) or Ctrl+Shift+R (Linux/Windows)"
