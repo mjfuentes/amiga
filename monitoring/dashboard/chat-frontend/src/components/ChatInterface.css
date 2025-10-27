@@ -113,7 +113,7 @@
 .chat-header {
   background: #151515;
   color: #d0d0d0;
-  padding: 1rem 2rem;
+  padding: 0.5rem 1rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -124,19 +124,19 @@
 .chat-title {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.5rem;
 }
 
 .chat-title h3 {
   margin: 0;
-  font-size: 1rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: #d0d0d0;
   letter-spacing: -0.01em;
 }
 
 .chat-logo {
-  height: 32px;
+  height: 24px;
   width: auto;
 }
 
@@ -182,20 +182,20 @@
   transform: scale(0.98);
 }
 
-/* Message wrapper with header and actions */
+/* Message wrapper with header and actions - COMPACT */
 .message-wrapper {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0;
   width: 100%;
   position: relative;
-  animation: slideIn 0.3s ease-out;
+  animation: slideIn 0.2s ease-out;
 }
 
 @keyframes slideIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(5px);
   }
   to {
     opacity: 1;
@@ -206,20 +206,20 @@
 .message-header {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.25rem;
+  gap: 0.375rem;
+  margin-bottom: 0;
 }
 
 .user-avatar,
 .assistant-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
   border: 1px solid #2a2a2a;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.75rem;
+  font-size: 0.625rem;
   font-weight: 600;
   flex-shrink: 0;
   background: #1a1a1a;
@@ -245,22 +245,24 @@
 }
 
 .message-time {
-  font-size: 0.75rem;
-  color: #666666;
+  font-size: 0.625rem;
+  color: #555555;
   font-weight: 400;
 }
 
 .message-content {
   word-wrap: break-word;
   color: #d0d0d0;
-  font-size: 0.9375rem;
-  line-height: 1.6;
+  font-size: 0.875rem;
+  line-height: 1.4;
   font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Monaco, 'Courier New', monospace;
+  padding-left: 24px;
+  margin-top: 2px;
 }
 
 .message-content p {
-  margin: 0.75rem 0;
-  line-height: 1.6;
+  margin: 0.25rem 0;
+  line-height: 1.4;
   color: #d0d0d0;
 }
 
@@ -282,10 +284,10 @@
   font-size: 0.875em;
 }
 
-/* Enhanced code block styling */
+/* Enhanced code block styling - COMPACT */
 .code-block-wrapper {
-  margin: 1.5rem 0;
-  border-radius: 6px;
+  margin: 0.5rem 0;
+  border-radius: 4px;
   overflow: hidden;
   border: 1px solid #2a2a2a;
   background: #1a1a1a;
@@ -300,7 +302,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.625rem 1rem;
+  padding: 0.375rem 0.75rem;
   background: #151515;
   border-bottom: 1px solid #2a2a2a;
 }
@@ -316,22 +318,24 @@
 .copy-code-button {
   display: flex;
   align-items: center;
-  gap: 0.375rem;
-  background: #1a1a1a;
+  gap: 0.25rem;
+  background: transparent;
   border: 1px solid #2a2a2a;
-  color: #888;
-  padding: 0.375rem 0.75rem;
-  border-radius: 4px;
+  color: #666;
+  padding: 0.25rem 0.5rem;
+  border-radius: 3px;
   cursor: pointer;
-  font-size: 0.75rem;
+  font-size: 0.625rem;
   font-weight: 500;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
+  opacity: 0.7;
 }
 
 .copy-code-button:hover {
-  background: #252525;
+  background: #1a1a1a;
   border-color: #3a3a3a;
-  color: #d0d0d0;
+  color: #888;
+  opacity: 1;
 }
 
 .copy-code-button:active {
@@ -339,8 +343,8 @@
 }
 
 .copy-code-button svg {
-  width: 14px;
-  height: 14px;
+  width: 11px;
+  height: 11px;
 }
 
 .message-content pre {
@@ -351,44 +355,45 @@
 
 .message-content pre code {
   font-family: 'SF Mono', Monaco, Menlo, 'Courier New', monospace;
-  font-size: 0.8125rem;
-  line-height: 1.5;
+  font-size: 0.75rem;
+  line-height: 1.4;
   display: block;
-  padding: 1rem;
+  padding: 0.5rem 0.75rem;
   color: #d0d0d0;
   background: #1a1a1a;
 }
 
-/* Message actions */
+/* Message actions - COMPACT AND SUBTLE */
 .message-actions {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.25rem;
   opacity: 0;
-  transition: opacity 0.2s ease;
-  margin-top: 0.25rem;
+  transition: opacity 0.15s ease;
+  margin-top: 0;
+  padding-left: 24px;
 }
 
 .message-wrapper:hover .message-actions {
-  opacity: 1;
+  opacity: 0.5;
 }
 
 .action-button {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #1a1a1a;
-  border: 1px solid #2a2a2a;
-  color: #888;
-  padding: 0.375rem;
-  border-radius: 4px;
+  background: transparent;
+  border: none;
+  color: #666;
+  padding: 0.25rem;
+  border-radius: 3px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
 }
 
 .action-button:hover {
-  background: #252525;
-  border-color: #3a3a3a;
-  color: #d0d0d0;
+  background: #1a1a1a;
+  color: #888;
+  opacity: 1;
 }
 
 .action-button:active {
@@ -396,18 +401,18 @@
 }
 
 .action-button svg {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
 }
 
-/* Typography */
+/* Typography - COMPACT */
 .message-content h1,
 .message-content h2,
 .message-content h3,
 .message-content h4,
 .message-content h5,
 .message-content h6 {
-  margin: 1.5rem 0 0.75rem 0;
+  margin: 0.75rem 0 0.375rem 0;
   color: #d0d0d0;
   font-weight: 600;
   line-height: 1.3;
@@ -421,30 +426,30 @@
 }
 
 .message-content h1 {
-  font-size: 1.5rem;
+  font-size: 1.125rem;
   border-bottom: 1px solid #2a2a2a;
-  padding-bottom: 0.5rem;
+  padding-bottom: 0.25rem;
 }
 
 .message-content h2 {
-  font-size: 1.25rem;
+  font-size: 1rem;
 }
 
 .message-content h3 {
-  font-size: 1.0625rem;
+  font-size: 0.9375rem;
 }
 
 .message-content ul,
 .message-content ol {
-  margin: 1rem 0;
-  padding-left: 2rem;
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
 }
 
 .message-content li {
-  margin: 0.5rem 0;
+  margin: 0.25rem 0;
   color: #d0d0d0;
-  line-height: 1.6;
-  padding-left: 0.25rem;
+  line-height: 1.4;
+  padding-left: 0.125rem;
 }
 
 .message-content li::marker {
@@ -452,9 +457,9 @@
 }
 
 .message-content blockquote {
-  border-left: 3px solid #4a4a4a;
-  padding-left: 1rem;
-  margin: 1rem 0;
+  border-left: 2px solid #4a4a4a;
+  padding-left: 0.75rem;
+  margin: 0.5rem 0;
   color: #888;
   font-style: normal;
 }
@@ -490,60 +495,60 @@
   position: relative !important;
 }
 
-/* Message list */
+/* Message list - COMPACT */
 .cs-message-list {
   background: #0a0a0a !important;
-  padding: 1rem 1rem !important;
+  padding: 0.5rem 1rem !important;
 }
 
-/* Message group wrapper */
+/* Message group wrapper - MINIMAL SPACING */
 .cs-message-group {
-  margin-bottom: 0.75rem !important;
-  animation: slideIn 0.3s ease-out;
+  margin-bottom: 0.375rem !important;
+  animation: slideIn 0.2s ease-out;
 }
 
-/* Incoming messages (assistant) */
+/* Incoming messages (assistant) - COMPACT */
 .cs-message--incoming .cs-message__content {
-  background: #1a1a1a !important;
+  background: transparent !important;
   color: #d0d0d0 !important;
-  border: 1px solid #2a2a2a !important;
-  border-radius: 6px !important;
-  font-size: 0.9375rem !important;
-  padding: 0.625rem 0.875rem !important;
+  border: none !important;
+  border-radius: 4px !important;
+  font-size: 0.875rem !important;
+  padding: 0.25rem 0 !important;
   max-width: 100% !important;
   font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Monaco, 'Courier New', monospace !important;
   box-shadow: none !important;
-  transition: all 0.2s ease !important;
+  transition: all 0.15s ease !important;
 }
 
 .cs-message--incoming .cs-message__content:hover {
   box-shadow: none !important;
-  border-color: #3a3a3a !important;
+  background: transparent !important;
 }
 
-/* Outgoing messages (user) */
+/* Outgoing messages (user) - COMPACT */
 .cs-message--outgoing .cs-message__content {
-  background: rgba(106, 159, 181, 0.1) !important;
+  background: transparent !important;
   color: #d0d0d0 !important;
-  border: 1px solid rgba(106, 159, 181, 0.2) !important;
-  border-radius: 6px !important;
-  font-size: 0.9375rem !important;
-  padding: 0.625rem 0.875rem !important;
-  transition: all 0.2s ease !important;
+  border: none !important;
+  border-radius: 4px !important;
+  font-size: 0.875rem !important;
+  padding: 0.25rem 0 !important;
+  transition: all 0.15s ease !important;
   font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Monaco, 'Courier New', monospace !important;
   box-shadow: none !important;
 }
 
 .cs-message--outgoing .cs-message__content:hover {
-  border-color: rgba(106, 159, 181, 0.3) !important;
+  background: transparent !important;
   box-shadow: none !important;
 }
 
-/* Avatar styling */
+/* Avatar styling - COMPACT */
 .cs-message__avatar {
-  width: 28px !important;
-  height: 28px !important;
-  border-radius: 6px !important;
+  width: 20px !important;
+  height: 20px !important;
+  border-radius: 4px !important;
   border: 1px solid #2a2a2a !important;
   background: #1a1a1a !important;
   color: #6a9fb5 !important;
@@ -551,21 +556,18 @@
   align-items: center !important;
   justify-content: center !important;
   font-weight: 600 !important;
-  font-size: 0.75rem !important;
+  font-size: 0.625rem !important;
 }
 
-/* Message sender name */
+/* Message sender name - HIDDEN (part of inline header) */
 .cs-message__sender-name {
-  color: #888 !important;
-  font-size: 0.75rem !important;
-  font-weight: 500 !important;
-  margin-bottom: 0.25rem !important;
+  display: none !important;
 }
 
-/* Message time */
+/* Message time - COMPACT */
 .cs-message__sent-time {
-  color: #666666 !important;
-  font-size: 0.75rem !important;
+  color: #555555 !important;
+  font-size: 0.625rem !important;
 }
 
 /* Message input container */
