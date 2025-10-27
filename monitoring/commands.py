@@ -28,6 +28,7 @@ class CommandHandler:
         args = parts[1] if len(parts) > 1 else ""
 
         handlers = {
+            "/status": self._handle_status,
             "/stop": self._handle_stop,
             "/stopall": self._handle_stopall,
             "/retry": self._handle_retry,
@@ -42,6 +43,43 @@ class CommandHandler:
             }
 
         return await handler(user_id, args)
+
+    async def _handle_status(self, user_id: str, args: str) -> dict:
+        """Handle /status command - show active and recent tasks."""
+        active_tasks = self.task_manager.get_active_tasks(int(user_id))
+        recent_completed = self.task_manager.get_user_tasks(int(user_id), status="completed", limit=5)
+        recent_failed = self.task_manager.get_user_tasks(int(user_id), status="failed", limit=3)
+
+        message = "**Status Report**\n\n"
+
+        # Active tasks
+        if active_tasks:
+            message += f"**Active Tasks ({len(active_tasks)}):**\n"
+            for task in active_tasks:
+                # Calculate elapsed time
+                created = datetime.fromisoformat(task.created_at)
+                elapsed = datetime.now() - created
+                minutes = int(elapsed.total_seconds() / 60)
+                message += f"🔄 `#{task.task_id[:6]}` - {task.description[:60]}... ({minutes}m)\n"
+            message += "\n"
+        else:
+            message += "**Active Tasks:** None\n\n"
+
+        # Recent completed
+        if recent_completed:
+            message += f"**Recent Completed ({len(recent_completed)}):**\n"
+            for task in recent_completed:
+                message += f"✅ `#{task.task_id[:6]}` - {task.description[:60]}...\n"
+            message += "\n"
+
+        # Recent failed
+        if recent_failed:
+            message += f"**Recent Failed ({len(recent_failed)}):**\n"
+            for task in recent_failed:
+                error_msg = task.error[:50] if task.error else "Unknown error"
+                message += f"❌ `#{task.task_id[:6]}` - {task.description[:60]}...\n  Error: {error_msg}...\n"
+
+        return {"success": True, "message": message}
 
     async def _handle_stop(self, user_id: str, args: str) -> dict:
         """Handle /stop <task_id> command."""

@@ -219,8 +219,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           className="task-link"
           onClick={(e) => {
             e.preventDefault();
-            // Open monitoring dashboard in new tab and navigate to task
-            window.open(`http://localhost:3000/#${urlTaskId}`, '_blank');
+            // Navigate to monitoring dashboard in current tab
+            window.location.href = `http://localhost:3000/#${urlTaskId}`;
           }}
           title={`View task ${taskId} in monitoring dashboard`}
         >
@@ -400,7 +400,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               src="/chat/amiga-logo.png"
               alt="AMIGA Logo"
               className="landing-logo clickable"
-              onClick={() => window.open('/', '_blank')}
+              onClick={() => window.location.href = '/'}
               title="View monitoring dashboard"
             />
             <div className="landing-input-wrapper">
@@ -444,7 +444,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             src="/chat/amiga-logo.png"
             alt="AMIGA"
             className="chat-logo clickable"
-            onClick={() => window.open('/', '_blank')}
+            onClick={() => window.location.href = '/'}
             title="View monitoring dashboard"
           />
         </div>
@@ -497,11 +497,38 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                               const language = match ? match[1] : '';
                               const codeString = String(children).replace(/\n$/, '');
 
-                              return isInline ? (
-                                <code className="inline-code" {...props}>
-                                  {children}
-                                </code>
-                              ) : (
+                              // Check if inline code contains a task ID (e.g., #task_abc or #abc123)
+                              if (isInline) {
+                                const taskIdMatch = /^#((?:task_[a-zA-Z0-9_]+)|(?:[a-f0-9]{6}))$/.exec(codeString);
+                                if (taskIdMatch) {
+                                  const taskId = taskIdMatch[1];
+                                  const urlTaskId = taskId.startsWith('task_') ? taskId : `task_${taskId}`;
+                                  return (
+                                    <a
+                                      href={`http://localhost:3000/#${urlTaskId}`}
+                                      className="task-link inline-code"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        window.location.href = `http://localhost:3000/#${urlTaskId}`;
+                                      }}
+                                      title={`View task ${taskId} in monitoring dashboard`}
+                                      {...props}
+                                    >
+                                      {codeString}
+                                    </a>
+                                  );
+                                }
+
+                                // Regular inline code
+                                return (
+                                  <code className="inline-code" {...props}>
+                                    {children}
+                                  </code>
+                                );
+                              }
+
+                              // Code blocks
+                              return (
                                 <div className="code-block-wrapper">
                                   <div className="code-block-header">
                                     <span className="code-language">{language || 'code'}</span>
