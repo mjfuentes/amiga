@@ -1955,8 +1955,7 @@ async function archiveDocument(path, name) {
         const result = await response.json();
 
         if (response.ok && result.success) {
-            showToast(`Archived "${name}" successfully`, 'success');
-            // Reload the documentation list silently
+            // Reload the documentation list silently (no success toast)
             await loadDocumentation();
             renderDocsList();
         } else {
