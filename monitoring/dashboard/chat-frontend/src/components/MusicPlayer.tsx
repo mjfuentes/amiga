@@ -152,23 +152,15 @@ export const MusicPlayer: React.FC = () => {
   };
 
   useEffect(() => {
-    // Start music on mount (respecting browser autoplay policies)
-    const initMusic = async () => {
-      // Try to start immediately
+    // Wait for user interaction to start music (browser autoplay policy)
+    const handleUserInteraction = async () => {
       await startMusic();
-
-      // If autoplay was blocked, start on first user interaction
-      const handleUserInteraction = async () => {
-        await startMusic();
-        document.removeEventListener('click', handleUserInteraction);
-        document.removeEventListener('keydown', handleUserInteraction);
-      };
-
-      document.addEventListener('click', handleUserInteraction);
-      document.addEventListener('keydown', handleUserInteraction);
+      document.removeEventListener('click', handleUserInteraction);
+      document.removeEventListener('keydown', handleUserInteraction);
     };
 
-    initMusic();
+    document.addEventListener('click', handleUserInteraction);
+    document.addEventListener('keydown', handleUserInteraction);
 
     // Cleanup
     return () => {
@@ -176,6 +168,8 @@ export const MusicPlayer: React.FC = () => {
       if (audioContextRef.current) {
         audioContextRef.current.close();
       }
+      document.removeEventListener('click', handleUserInteraction);
+      document.removeEventListener('keydown', handleUserInteraction);
     };
   }, []);
 
