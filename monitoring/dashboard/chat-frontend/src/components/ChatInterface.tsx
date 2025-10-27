@@ -517,6 +517,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               </div>
             )}
             <MessageInput
+              key={`chat-input-${connected}-${messages.length}`}
               placeholder="Type your message... (type / for commands)"
               value={inputValue}
               onChange={(val) => handleInputChange(val)}
