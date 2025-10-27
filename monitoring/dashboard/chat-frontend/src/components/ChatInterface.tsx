@@ -21,6 +21,8 @@ interface ChatInterfaceProps {
   onSendMessage: (message: string) => void;
   onClearChat: () => Promise<boolean>;
   onLogout: () => void;
+  chatViewActive: boolean;
+  setChatViewActive: (active: boolean) => void;
 }
 
 // Available commands with descriptions
@@ -39,6 +41,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onSendMessage,
   onClearChat,
   onLogout,
+  chatViewActive,
+  setChatViewActive,
 }) => {
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -273,6 +277,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   };
 
   const handleSend = useCallback(async (message: string) => {
+    // Handle empty Enter press on landing page - activate chat view without sending message
+    if (!message.trim() && messages.length === 0) {
+      setChatViewActive(true);
+      return;
+    }
+
     if (message.trim()) {
       setShowCommands(false);
 
@@ -294,6 +304,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         await onClearChat();
         setIsTyping(false);
         setIsShuttingDown(false);
+        // Reset chat view to landing page
+        setChatViewActive(false);
         // Re-focus after clearing (with delay for re-render)
         setTimeout(focusInput, 100);
       } else if (cleanMessage === '/help') {
@@ -329,7 +341,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         setTimeout(focusInput, 100);
       }
     }
-  }, [messages.length, onClearChat, onSendMessage]);
+  }, [messages.length, onClearChat, onSendMessage, setChatViewActive]);
 
   // Update ref when handleSend changes
   useEffect(() => {
@@ -387,8 +399,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     });
   };
 
-  // Show landing page when no messages
-  if (messages.length === 0) {
+  // Show landing page when no messages and chat view not active
+  if (messages.length === 0 && !chatViewActive) {
     return (
       <div className="chat-interface landing">
         <Toaster />
