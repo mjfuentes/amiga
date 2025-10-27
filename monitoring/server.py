@@ -33,6 +33,7 @@ from monitoring.metrics import MetricsAggregator  # noqa: E402
 from tasks.manager import TaskManager  # noqa: E402
 from tasks.pool import AgentPool, TaskPriority  # noqa: E402
 from tasks.tracker import ToolUsageTracker  # noqa: E402
+from tasks.monitor import TaskMonitor  # noqa: E402
 from monitoring.commands import CommandHandler  # noqa: E402
 from utils.logging_setup import configure_root_logger  # noqa: E402
 
@@ -145,6 +146,14 @@ hooks_reader = HooksReader(sessions_dir=sessions_dir, additional_dirs=[workspace
 
 # Initialize metrics aggregator
 metrics_aggregator = MetricsAggregator(task_manager, tool_usage_tracker, hooks_reader)
+
+# Initialize task monitor for stuck task detection
+# Check every 60s, mark tasks failed after 30min without updates
+task_monitor = TaskMonitor(
+    database=tool_usage_tracker.db,
+    check_interval_seconds=60,
+    task_timeout_minutes=30
+)
 
 # Initialize session manager for web chat
 session_manager = SessionManager(data_dir=data_dir)
@@ -3233,9 +3242,17 @@ def run_server(host: str = "0.0.0.0", port: int = 3000, debug: bool = False):  #
 
     logger.info("Agent pool ready")
 
+    # Start task monitor in agent pool's event loop
+    logger.info("Starting task monitor for stuck task detection...")
+    asyncio.run_coroutine_threadsafe(task_monitor.start(), _agent_pool_loop)
+    logger.info("Task monitor started")
+
     try:
         socketio.run(app, host=host, port=port, debug=debug, allow_unsafe_werkzeug=True)
     finally:
+        logger.info("Shutting down task monitor...")
+        if _agent_pool_loop:
+            asyncio.run_coroutine_threadsafe(task_monitor.stop(), _agent_pool_loop)
         logger.info("Shutting down agent pool...")
         if _agent_pool_loop:
             _agent_pool_loop.call_soon_threadsafe(_agent_pool_loop.stop)
