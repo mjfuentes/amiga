@@ -574,7 +574,7 @@
 /* Chat container */
 .cs-chat-container {
   background: rgba(20, 20, 20, 0.95) !important;
-  max-width: 900px;
+  max-width: 100%;
   margin: 0 auto;
   position: relative !important;
   flex: 1 !important;
