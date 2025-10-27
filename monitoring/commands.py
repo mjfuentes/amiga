@@ -28,7 +28,6 @@ class CommandHandler:
         args = parts[1] if len(parts) > 1 else ""
 
         handlers = {
-            "/status": self._handle_status,
             "/stop": self._handle_stop,
             "/stopall": self._handle_stopall,
             "/retry": self._handle_retry,
@@ -43,51 +42,6 @@ class CommandHandler:
             }
 
         return await handler(user_id, args)
-
-    async def _handle_status(self, user_id: str, args: str) -> dict:
-        """Handle /status command."""
-        # Clean up stale tasks
-        self.task_manager.cleanup_stale_pending_tasks(max_age_hours=1)
-        self.task_manager.clear_old_failed_tasks(int(user_id), older_than_hours=24)
-
-        # Get active tasks
-        active_tasks = self.task_manager.get_active_tasks(int(user_id))
-
-        # Get recent completed/failed tasks
-        recent_tasks = self.task_manager.get_user_tasks(int(user_id), limit=10)
-        completed = [t for t in recent_tasks if t.status == "completed"][:5]
-        failed = [t for t in recent_tasks if t.status == "failed"][:5]
-
-        message = "**Status Report**\n\n"
-
-        if active_tasks:
-            message += f"**Active Tasks ({len(active_tasks)}):**\n"
-            for task in active_tasks:
-                elapsed = datetime.now() - datetime.fromisoformat(task.created_at)
-                elapsed_str = f"{int(elapsed.total_seconds() / 60)}m" if elapsed.total_seconds() > 60 else f"{int(elapsed.total_seconds())}s"
-                status_emoji = "🔄" if task.status == "running" else "⏳"
-                message += f"{status_emoji} `#{task.task_id}` - {task.description[:60]}... ({elapsed_str})\n"
-            message += "\n"
-        else:
-            message += "No active tasks\n\n"
-
-        if completed:
-            message += f"**Recent Completed ({len(completed)}):**\n"
-            for task in completed:
-                message += f"✅ `#{task.task_id}` - {task.description[:60]}...\n"
-            message += "\n"
-
-        if failed:
-            message += f"**Recent Failed ({len(failed)}):**\n"
-            for task in failed:
-                error_msg = task.error[:50] if task.error else "Unknown error"
-                message += f"❌ `#{task.task_id}` - {task.description[:60]}...\n   Error: {error_msg}...\n"
-            message += "\n"
-
-        if not active_tasks and not completed and not failed:
-            message += "No recent activity\n"
-
-        return {"success": True, "message": message, "data": {"active": len(active_tasks)}}
 
     async def _handle_stop(self, user_id: str, args: str) -> dict:
         """Handle /stop <task_id> command."""
