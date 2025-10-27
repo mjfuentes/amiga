@@ -13,6 +13,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import toast, { Toaster } from 'react-hot-toast';
 import { Message as MessageType } from '../types';
+import { MusicPlayer } from './MusicPlayer';
 import './ChatInterface.css';
 
 interface ChatInterfaceProps {
@@ -191,10 +192,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     });
   };
 
-  // Process text to linkify task IDs (e.g., #task_abc123)
+  // Process text to linkify task IDs (e.g., #task_abc123 or #47f03a)
   const linkifyTaskIds = (text: string): React.ReactNode => {
-    // Match pattern: #<task_id> where task_id is alphanumeric with underscores
-    const taskIdRegex = /#(task_[a-zA-Z0-9_]+)/g;
+    // Match pattern: #<task_id> where task_id is either:
+    // - task_[alphanumeric with underscores]
+    // - 6-character hex string (for short task IDs like #47f03a)
+    const taskIdRegex = /#((?:task_[a-zA-Z0-9_]+)|(?:[a-f0-9]{6}))/g;
     const parts: React.ReactNode[] = [];
     let lastIndex = 0;
     let match;
@@ -206,16 +209,18 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       }
 
       // Add clickable link for task ID
-      const taskId = match[1]; // Extract task_xxx without #
+      const taskId = match[1]; // Extract task_xxx or hex without #
+      // For short hex IDs, use the hex directly; for task_ format, keep as is
+      const urlTaskId = taskId.startsWith('task_') ? taskId : `task_${taskId}`;
       parts.push(
         <a
           key={`task-${taskId}-${match.index}`}
-          href={`http://localhost:3000#task-${taskId}`}
+          href={`http://localhost:3000#${urlTaskId}`}
           className="task-link"
           onClick={(e) => {
             e.preventDefault();
             // Open monitoring dashboard in new tab and navigate to task
-            window.open(`http://localhost:3000#task-${taskId}`, '_blank');
+            window.open(`http://localhost:3000#${urlTaskId}`, '_blank');
           }}
           title={`View task ${taskId} in monitoring dashboard`}
         >
@@ -388,6 +393,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     return (
       <div className="chat-interface landing">
         <Toaster />
+        <MusicPlayer />
         <div className="landing-container">
           <div className="landing-content">
             <img
@@ -431,6 +437,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   return (
     <div className={`chat-interface ${isShuttingDown ? 'shutting-down' : ''}`}>
       <Toaster />
+      <MusicPlayer />
       <div className="chat-header">
         <div className="chat-title">
           <img
