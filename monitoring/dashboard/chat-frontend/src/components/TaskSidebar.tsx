@@ -111,16 +111,14 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
     try {
       // Parse ISO timestamp - handle SQLite format "2025-10-16 23:11:15.782996"
       // or ISO format "2025-10-16T23:11:15.782996"
+      // Backend stores timestamps in LOCAL timezone without timezone suffix
       let isoTimestamp = timestamp.trim();
 
       // Replace space with 'T' if needed for proper ISO format
       isoTimestamp = isoTimestamp.replace(' ', 'T');
 
-      // If no timezone info, assume UTC and append 'Z'
-      if (!isoTimestamp.includes('Z') && !isoTimestamp.includes('+') && !isoTimestamp.match(/[-+]\d{2}:\d{2}$/)) {
-        isoTimestamp = isoTimestamp + 'Z';
-      }
-
+      // Parse as local time (backend sends local timestamps without timezone info)
+      // Do NOT add 'Z' as that would incorrectly interpret as UTC
       const date = new Date(isoTimestamp);
 
       // Validate date
