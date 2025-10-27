@@ -38,6 +38,12 @@
   letter-spacing: -0.01em;
 }
 
+.landing-logo {
+  width: 200px;
+  height: auto;
+  margin-bottom: 1rem;
+}
+
 .landing-input-wrapper {
   width: 100%;
   max-width: 600px;
@@ -127,6 +133,11 @@
   font-weight: 600;
   color: #d0d0d0;
   letter-spacing: -0.01em;
+}
+
+.chat-logo {
+  height: 32px;
+  width: auto;
 }
 
 .connection-status {
@@ -223,6 +234,14 @@
 .assistant-avatar {
   color: #888;
   border-color: #2a2a2a;
+  padding: 0;
+  overflow: hidden;
+}
+
+.avatar-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .message-time {
