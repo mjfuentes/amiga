@@ -381,16 +381,33 @@ function appendToolExecutionToModal(toolData) {
         status: toolData.status || 'completed'
     };
 
-    // Check if last call is identical (deduplication)
+    // Check if last call is identical (consolidation)
     const lastCallElement = scrollContainer.querySelector('.tool-call-entry:last-child');
     if (lastCallElement) {
         const lastToolAttr = lastCallElement.getAttribute('data-tool');
         const lastParamsAttr = lastCallElement.getAttribute('data-params');
+        const lastCountAttr = parseInt(lastCallElement.getAttribute('data-count') || '1', 10);
 
         const currentParams = JSON.stringify(toolCall.parameters);
 
-        // Skip if identical to previous
+        // If identical to previous, increment count
         if (lastToolAttr === toolCall.tool && lastParamsAttr === currentParams) {
+            // Increment count on the consolidated entry
+            toolCall.count = lastCountAttr + 1;
+
+            // Save scroll state
+            const wasAtBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop <= scrollContainer.clientHeight + 50;
+
+            // Replace the last entry with updated count
+            const currentCalls = scrollContainer.querySelectorAll('.tool-call-entry').length;
+            const toolHtml = renderTerminalToolCall(toolCall, currentCalls);
+            lastCallElement.outerHTML = toolHtml;
+
+            // Restore scroll behavior
+            if (autoScrollEnabled || wasAtBottom) {
+                scrollToBottom();
+            }
+
             return;
         }
     }
@@ -968,25 +985,13 @@ function renderTaskToolUsage(toolData) {
     // Terminal body (expanded by default)
     const toolCalls = toolData.tool_calls || [];
 
-    // Deduplicate consecutive identical tool calls
-    // Keep most recent tools in chronological order (oldest first → newest last)
+    // Backend already consolidates consecutive identical tool calls
+    // Just take most recent tools in chronological order (oldest first → newest last)
     const startIndex = Math.max(0, toolCalls.length - TOOL_CALLS_LIMIT);
     const recentCalls = toolCalls.slice(startIndex);
-    const dedupedCalls = [];
-    let prev = null;
-
-    for (const call of recentCalls) {
-        // Check if this call is identical to previous (same tool + same parameters)
-        if (prev && prev.tool === call.tool && JSON.stringify(prev.parameters) === JSON.stringify(call.parameters)) {
-            // Skip consecutive duplicate
-            continue;
-        }
-        dedupedCalls.push(call);
-        prev = call;
-    }
 
     html += '<div class="terminal-body expanded" id="toolTimelineScroll">';
-    html += dedupedCalls.map((call, index) => {
+    html += recentCalls.map((call, index) => {
         return renderTerminalToolCall(call, index + 1);
     }).join('');
     html += '</div>';
@@ -1371,10 +1376,16 @@ function renderTerminalToolCall(call, lineNumber) {
 
     // Build HTML - white text with colored highlights for key info
     const paramsJson = JSON.stringify(parameters);
-    let html = `<div class="tool-call-entry" data-tool="${escapeHtml(tool)}" data-params="${escapeHtml(paramsJson)}" style="padding: 0.125rem 0; line-height: 1.3; color: #e6edf3;">`;
+    const count = call.count || 1;
+    let html = `<div class="tool-call-entry" data-tool="${escapeHtml(tool)}" data-params="${escapeHtml(paramsJson)}" data-count="${count}" style="padding: 0.125rem 0; line-height: 1.3; color: #e6edf3;">`;
 
     html += summaryText;
-    
+
+    // Add count badge for consolidated tool calls
+    if (count > 1) {
+        html += ` <span style="display: inline-block; background: #58a6ff; color: #0d1117; padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-size: 0.75rem; font-weight: 600; margin-left: 0.375rem;">×${count}</span>`;
+    }
+
     if (timingInfo) {
         html += `<span style="color: #8b949e;">${timingInfo}</span>`;
     }

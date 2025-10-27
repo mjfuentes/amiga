@@ -1350,6 +1350,9 @@ def task_tool_usage(task_id):
                     f"Enriched {enriched_count}/{len(tool_calls)} tool calls with session data for task {task_id}"
                 )
 
+        # Consolidate consecutive identical operations
+        tool_calls = _consolidate_tool_calls(tool_calls)
+
         # Build summary
         summary = {
             "task_id": task_id,
