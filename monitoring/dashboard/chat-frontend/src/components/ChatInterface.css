@@ -531,7 +531,7 @@
   font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Monaco, 'Courier New', monospace !important;
   flex: 1 !important;
   display: flex !important;
-  flex-direction: column !important;
+  flex-direction: column-reverse !important;
   overflow: hidden !important;
 }
 
