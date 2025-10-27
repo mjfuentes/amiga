@@ -106,7 +106,7 @@ def _finalize_group(group: dict) -> dict:
     return {
         "tool": first.get("tool"),
         "timestamp": first.get("timestamp"),
-        "duration": sum(c.get("duration", 0) for c in calls),
+        "duration": sum((c.get("duration") or 0) for c in calls),
         "has_error": first.get("has_error"),
         "error": first.get("error"),
         "success": first.get("success", True),
