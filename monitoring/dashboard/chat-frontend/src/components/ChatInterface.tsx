@@ -28,7 +28,6 @@ const COMMANDS = [
   { command: '/help', description: 'Show available commands' },
   { command: '/status', description: 'Show active tasks and recent errors' },
   { command: '/clear', description: 'Clear conversation history' },
-  { command: '/retry', description: 'Retry failed tasks' },
   { command: '/stop', description: 'Stop a running task by ID' },
   { command: '/stopall', description: 'Stop all running tasks' },
   { command: '/view', description: 'View task result by ID' },
