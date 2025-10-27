@@ -55,7 +55,7 @@ class MetricsAggregator:
         cutoff_time = (datetime.now() - timedelta(hours=24)).isoformat()
         cursor.execute(
             """
-            SELECT task_id, user_id, description, status, created_at, updated_at, model, agent_type
+            SELECT task_id, user_id, description, status, created_at, updated_at, model, agent_type, last_agent_type
             FROM tasks
             WHERE created_at >= ?
             ORDER BY created_at DESC
@@ -76,6 +76,7 @@ class MetricsAggregator:
                     "updated_at": row[5],
                     "model": row[6],
                     "agent_type": row[7],
+                    "last_agent_type": row[8],
                 }
             )
 

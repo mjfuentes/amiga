@@ -9,6 +9,7 @@ interface Task {
   updated_at: string;
   model: string;
   agent_type: string;
+  last_agent_type?: string;
   result?: string;
   error?: string;
   tool_usage?: ToolUsage[];
@@ -186,7 +187,7 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
                 </div>
                 <div className="task-description">{task.description}</div>
                 <div className="task-meta">
-                  <span className="task-agent">{task.agent_type}</span>
+                  <span className="task-agent">{task.last_agent_type || task.agent_type}</span>
                   <span className="task-time">{formatTimestamp(task.updated_at)}</span>
                 </div>
                 {task.tool_usage && task.tool_usage.length > 0 && (
