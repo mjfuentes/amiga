@@ -42,12 +42,12 @@ try:
     tool_name = data.get('tool_name', 'unknown')
     tool_input = data.get('tool_input', {})
 
-    # Extract task_id from worktree path if in /tmp/agentlab-worktrees/
+    # Extract task_id from worktree path if in /tmp/amiga-worktrees/
     task_id = os.environ.get('TASK_ID')
     if not task_id:
         pwd = os.getcwd()
-        if '/tmp/agentlab-worktrees/' in pwd or '/private/tmp/agentlab-worktrees/' in pwd:
-            # Extract task_id from path like /tmp/agentlab-worktrees/0e89c3
+        if '/tmp/amiga-worktrees/' in pwd or '/private/tmp/amiga-worktrees/' in pwd:
+            # Extract task_id from path like /tmp/amiga-worktrees/0e89c3
             task_id = os.path.basename(pwd)
 
     # Return session_id, task_id, and log entry
@@ -80,10 +80,10 @@ LOG_ENTRY=$(echo "$LOG_DATA" | python3 -c "import json, sys; print(json.dumps(js
 # Try multiple locations: PWD, Telegram bot workspace, fallback to temp
 if [ -d "$PWD/logs" ]; then
     LOG_DIR="$PWD/logs/sessions/$SESSION_ID_RESOLVED"
-elif [ -d "/Users/matifuentes/Workspace/agentlab/logs" ]; then
-    LOG_DIR="/Users/matifuentes/Workspace/agentlab/logs/sessions/$SESSION_ID_RESOLVED"
-elif [ -d "/Users/matifuentes/Workspace/agentlab/telegram_bot/logs" ]; then
-    LOG_DIR="/Users/matifuentes/Workspace/agentlab/telegram_bot/logs/sessions/$SESSION_ID_RESOLVED"
+elif [ -d "/Users/matifuentes/Workspace/amiga/logs" ]; then
+    LOG_DIR="/Users/matifuentes/Workspace/amiga/logs/sessions/$SESSION_ID_RESOLVED"
+elif [ -d "/Users/matifuentes/Workspace/amiga/telegram_bot/logs" ]; then
+    LOG_DIR="/Users/matifuentes/Workspace/amiga/telegram_bot/logs/sessions/$SESSION_ID_RESOLVED"
 else
     # Fallback to temp if no logs directory found
     LOG_DIR="/tmp/claude-sessions/$SESSION_ID_RESOLVED"
@@ -103,6 +103,6 @@ fi
 # Record tool start to database for real-time monitoring
 # Pass INPUT through environment to avoid re-reading stdin
 export INPUT_JSON="$INPUT"
-python3 /Users/matifuentes/Workspace/agentlab/scripts/record_tool_start.py 2>/dev/null || true
+python3 /Users/matifuentes/Workspace/amiga/scripts/record_tool_start.py 2>/dev/null || true
 
 exit 0

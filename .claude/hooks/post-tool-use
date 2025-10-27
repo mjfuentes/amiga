@@ -23,6 +23,6 @@ export INPUT_JSON
 
 # Call Python script to record tool usage
 # Script uses Database class which handles correct path resolution
-python3 /Users/matifuentes/Workspace/agentlab/scripts/record_tool_usage.py
+python3 /Users/matifuentes/Workspace/amiga/scripts/record_tool_usage.py
 
 exit 0
