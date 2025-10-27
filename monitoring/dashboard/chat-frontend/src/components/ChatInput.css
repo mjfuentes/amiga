@@ -1,42 +1,61 @@
-/* Override: Chat input always highlighted */
+/* Override: Chat input with improved colors */
 .cs-message-input__content-editor {
-  background: #1a1a1a !important;
-  color: #e8e8e8 !important;
-  border: 1px solid #00aaff !important;
-  border-radius: 4px !important;
-  box-shadow: 0 0 0 1px rgba(0, 170, 255, 0.3) !important;
+  background: linear-gradient(135deg, #1a1a1a 0%, #252525 100%) !important;
+  color: #f0f0f0 !important;
+  border: 1px solid #3a9fd5 !important;
+  border-radius: 6px !important;
+  box-shadow: 0 0 0 1px rgba(58, 159, 213, 0.25), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+  transition: all 0.2s ease !important;
 }
 
 .cs-message-input__content-editor:focus {
-  border-color: #00aaff !important;
+  border-color: #4ab8ff !important;
   outline: none !important;
-  box-shadow: 0 0 0 2px rgba(0, 170, 255, 0.5) !important;
-  background: #1a1a1a !important;
+  box-shadow: 0 0 0 2px rgba(74, 184, 255, 0.4), 0 4px 12px rgba(58, 159, 213, 0.3) !important;
+  background: linear-gradient(135deg, #1f1f1f 0%, #2a2a2a 100%) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Wrapper styling for cleaner look */
+.cs-message-input__content-editor-wrapper {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 /* Fix placeholder text color for better visibility */
 .cs-message-input__content-editor::placeholder {
-  color: #999999 !important;
+  color: #888888 !important;
   opacity: 1 !important;
 }
 
 .cs-message-input__content-editor::-webkit-input-placeholder {
-  color: #999999 !important;
+  color: #888888 !important;
   opacity: 1 !important;
 }
 
 .cs-message-input__content-editor::-moz-placeholder {
-  color: #999999 !important;
+  color: #888888 !important;
   opacity: 1 !important;
 }
 
 .cs-message-input__content-editor:-ms-input-placeholder {
-  color: #999999 !important;
+  color: #888888 !important;
   opacity: 1 !important;
 }
 
 /* Fix contenteditable placeholder (uses ::before pseudo-element) */
 .cs-message-input__content-editor[data-placeholder]:empty::before {
-  color: #999999 !important;
+  color: #888888 !important;
   opacity: 1 !important;
+}
+
+/* Hide scrollbar for input textarea */
+.cs-message-input__content-editor {
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none !important; /* IE and Edge */
+}
+
+.cs-message-input__content-editor::-webkit-scrollbar {
+  display: none !important; /* Chrome, Safari, Opera */
 }
