@@ -14,4 +14,4 @@ rm -rf ../static/chat/*
 cp -r build/* ../static/chat/
 
 echo "✓ Deployment complete. Restart monitoring_server.py to see changes."
-echo "  Access at: http://localhost:3000/chat"
+echo "  Access at: http://localhost:3000"

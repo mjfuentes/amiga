@@ -88,7 +88,7 @@ class TaskMonitor:
         """Check all running tasks for stuck/stale conditions"""
         try:
             # Query running tasks
-            running_tasks = await self.db.get_tasks_by_status("running")
+            running_tasks = self.db.get_tasks_by_status("running")
 
             if not running_tasks:
                 return
@@ -172,11 +172,10 @@ class TaskMonitor:
             }
         """
         try:
-            tasks = await self.db.get_tasks(task_ids=[task_id])
-            if not tasks:
+            task = self.db.get_task(task_id)
+            if not task:
                 return {"status": "unknown", "message": "Task not found"}
 
-            task = tasks[0]
             pid = task.get("pid")
             status = task["status"]
             updated_at_str = task["updated_at"]

@@ -140,8 +140,8 @@ restart_server() {
 
     echo ""
     echo "🌐 Access points:"
-    echo "   Dashboard: http://localhost:3000"
-    echo "   Chat:      http://localhost:3000/chat"
+    echo "   Chat:      http://localhost:3000"
+    echo "   Dashboard: http://localhost:3000/dashboard"
     echo ""
     echo "📝 Logs:"
     echo "   Monitor:   tail -f logs/monitoring.log"

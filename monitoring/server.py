@@ -750,25 +750,29 @@ def get_task_token_usage(task_id: str) -> dict[str, int]:
 
 @app.route("/")
 def index():
-    """Serve the main dashboard"""
-    return render_template("dashboard.html")
-
-
-@app.route("/chat")
-@app.route("/chat/")
-def chat_view():
     """Serve the chat interface (React app)"""
     # Static files are at project root, not monitoring/
     chat_static_dir = Path(__file__).parent.parent / "static" / "chat"
     return send_from_directory(chat_static_dir, "index.html")
 
 
-@app.route("/chat/<path:filename>")
-def chat_files(filename):
-    """Serve chat app static files (favicon, manifest, etc)"""
-    # Static files are at project root, not monitoring/
+@app.route("/dashboard")
+def dashboard_view():
+    """Serve the monitoring dashboard"""
+    return render_template("dashboard.html")
+
+
+@app.route("/<path:filename>")
+def static_files(filename):
+    """Serve static files (favicon, manifest, JS, CSS, etc)"""
+    # First try chat static directory
     chat_static_dir = Path(__file__).parent.parent / "static" / "chat"
-    return send_from_directory(chat_static_dir, filename)
+    file_path = chat_static_dir / filename
+    if file_path.exists():
+        return send_from_directory(chat_static_dir, filename)
+
+    # Fallback to default Flask static handling
+    return send_from_directory(app.static_folder, filename)
 
 
 # --- Authentication API Endpoints ---
