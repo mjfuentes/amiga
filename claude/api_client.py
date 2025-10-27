@@ -269,6 +269,11 @@ BACKGROUND_TASK when:
 CRITICAL: "fix X" → BACKGROUND_TASK (explaining ≠ fixing)
 CRITICAL: "make/change/modify chat" → ALWAYS BACKGROUND_TASK (DO NOT explain approaches, design choices, or suggest ideas - route immediately)
 Rule: File access needed → BACKGROUND_TASK. General knowledge → answer directly.
+
+AGENT ROUTING (in context_summary):
+• Frontend-specific tasks (HTML/CSS/JS/UI) → "use frontend-agent to [task]"
+• Complex/large tasks (5+ subtasks, multi-domain, system-level) → "use orchestrator to [task]"
+• Simple tasks (single file, bug fix, small addition) → No agent prefix (code_agent default)
 </routing_rules>
 
 <log_protocol>
@@ -297,7 +302,10 @@ Context Summary Guidelines:
 • Mention specific files/paths/repos if discussed
 • Note any constraints explicitly mentioned by user (time, scope, preferences)
 • State the working directory/repository
-• CRITICAL: If task involves chat interface or monitoring dashboard, START with "use frontend-agent to [task description]"
+• CRITICAL: Agent routing - START with appropriate prefix:
+  - "use frontend-agent to ..." for chat/dashboard UI tasks
+  - "use orchestrator to ..." for complex multi-component/system-level tasks
+  - No prefix for simple single-file tasks
 • DO NOT add implementation suggestions or technical approaches
 • DO NOT interpret or expand on what user wants - just report facts
 • Keep factual and concise (2-3 sentences max)
@@ -312,6 +320,25 @@ When task clearly involves:
 Example:
 User: "add dark mode to chat"
 context_summary: "use frontend-agent to add dark mode to chat. User asked: 'add dark mode to chat'. Working in amiga repo."
+
+Orchestrator Agent Detection:
+When task clearly involves:
+• Complex multi-component features: "build [system]", "create [feature with 5+ parts]"
+• Multi-domain tasks: backend + frontend + infrastructure together
+• System-level changes: "implement authentication system", "add payment flow", "build API layer"
+• Large scope: tasks that need orchestration across multiple agents/modules
+• New features with research needed: "integrate [new service]", "add [complex feature]"
+→ START context_summary with "use orchestrator to [what user wants]"
+
+Examples:
+User: "build authentication system"
+context_summary: "use orchestrator to build authentication system. User asked: 'build authentication system'. Working in amiga repo."
+
+User: "implement payment flow with Stripe"
+context_summary: "use orchestrator to implement payment flow with Stripe. User asked: 'implement payment flow with Stripe integration'. Working in groovetherapy repo."
+
+User: "create admin dashboard with metrics"
+context_summary: "use orchestrator to create admin dashboard with metrics. User asked: 'create admin dashboard with user metrics and analytics'. Backend + frontend needed. Working in amiga repo."
 </background_task_format>
 
 <examples>
@@ -323,6 +350,9 @@ GOOD:
 • "make chat like a command line, 90s like" → BACKGROUND_TASK|Modify chat interface to Matrix-style command line (90s hacker aesthetic)|Updating chat UI to retro terminal style.|use frontend-agent to make chat like a command line, 90s like, like neo talking to morpheo in matrix. User asked: "make chat like a command line, 90s like, like neo talking to morpheo in matrix". Working in amiga repo.
 • "change chat to dark mode" → BACKGROUND_TASK|Add dark mode to chat interface|Adding dark mode to chat.|use frontend-agent to change chat to dark mode. User asked: "change chat to dark mode". Working in amiga repo.
 • "add metrics graph to dashboard" → BACKGROUND_TASK|Add metrics visualization to monitoring dashboard|Adding graph to dashboard.|use frontend-agent to add metrics graph to dashboard. User asked: "add metrics graph to dashboard". Working in amiga repo.
+• "build authentication system" → BACKGROUND_TASK|Build authentication system with JWT|Building authentication system.|use orchestrator to build authentication system. User asked: "build authentication system with JWT tokens". Multi-component task: backend models, API endpoints, middleware. Working in amiga repo.
+• "implement payment flow" → BACKGROUND_TASK|Implement payment flow with Stripe|Setting up payment integration.|use orchestrator to implement payment flow with Stripe. User asked: "implement payment flow with Stripe integration". Needs backend webhooks, frontend checkout, database schema. Working in groovetherapy repo.
+• "create admin dashboard" → BACKGROUND_TASK|Create admin dashboard with user metrics|Building admin dashboard.|use orchestrator to create admin dashboard with metrics. User asked: "create admin dashboard with user metrics and analytics". Backend + frontend + API integration needed. Working in amiga repo.
 • "what is asyncio?" → [Direct answer about asyncio]
 • "check logs" → [Direct log summary from context]
 
