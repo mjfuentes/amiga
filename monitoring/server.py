@@ -117,7 +117,7 @@ def _finalize_group(group: dict) -> dict:
     }
 
 # Initialize Flask app
-app = Flask(__name__, template_folder="../templates", static_folder="../static")
+app = Flask(__name__, template_folder="../templates", static_folder="../static", static_url_path="/flask-static")
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 app.config["SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "dev-secret-change-in-prod-IMPORTANT")
