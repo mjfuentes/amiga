@@ -969,7 +969,9 @@ function renderTaskToolUsage(toolData) {
     const toolCalls = toolData.tool_calls || [];
 
     // Deduplicate consecutive identical tool calls
-    const recentCalls = toolCalls.slice(-TOOL_CALLS_LIMIT);
+    // Keep most recent tools in chronological order (oldest first → newest last)
+    const startIndex = Math.max(0, toolCalls.length - TOOL_CALLS_LIMIT);
+    const recentCalls = toolCalls.slice(startIndex);
     const dedupedCalls = [];
     let prev = null;
 
