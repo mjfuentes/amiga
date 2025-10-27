@@ -501,33 +501,33 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               </Message>
             ))}
           </MessageList>
-          <div className="message-input-wrapper">
-            {showCommands && filteredCommands.length > 0 && (
-              <div className="command-suggestions">
-                {filteredCommands.map((cmd, idx) => (
-                  <div
-                    key={cmd.command}
-                    className={`command-suggestion ${idx === highlightedIndex ? 'highlighted' : ''}`}
-                    onClick={() => selectCommand(cmd.command)}
-                  >
-                    <code className="command-name">{cmd.command}</code>
-                    <span className="command-desc">{cmd.description}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            <MessageInput
-              key={`chat-input-${connected}-${messages.length}`}
-              placeholder="Type your message... (type / for commands)"
-              value={inputValue}
-              onChange={(val) => handleInputChange(val)}
-              onSend={handleSend}
-              disabled={!connected}
-              attachButton={false}
-              aria-label="Message input"
-            />
-          </div>
         </ChatContainer>
+        <div className="message-input-wrapper">
+          {showCommands && filteredCommands.length > 0 && (
+            <div className="command-suggestions">
+              {filteredCommands.map((cmd, idx) => (
+                <div
+                  key={cmd.command}
+                  className={`command-suggestion ${idx === highlightedIndex ? 'highlighted' : ''}`}
+                  onClick={() => selectCommand(cmd.command)}
+                >
+                  <code className="command-name">{cmd.command}</code>
+                  <span className="command-desc">{cmd.description}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <MessageInput
+            key={`chat-input-${connected}-${messages.length}`}
+            placeholder="Type your message... (type / for commands)"
+            value={inputValue}
+            onChange={(val) => handleInputChange(val)}
+            onSend={handleSend}
+            disabled={!connected}
+            attachButton={false}
+            aria-label="Message input"
+          />
+        </div>
       </MainContainer>
     </div>
   );
