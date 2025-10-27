@@ -922,6 +922,12 @@
   outline-offset: 2px;
 }
 
+/* Input wrapper for command suggestions positioning */
+.input-wrapper-with-suggestions {
+  position: relative;
+  width: 100%;
+}
+
 /* Command suggestions dropdown */
 .command-suggestions {
   position: absolute;
@@ -935,7 +941,6 @@
   border-radius: 6px 6px 0 0;
   max-height: 300px;
   overflow-y: auto;
-  z-index: 1000;
   animation: commandSlideUp 0.2s ease-out;
 }
 
