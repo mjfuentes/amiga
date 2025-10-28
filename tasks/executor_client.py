@@ -49,11 +49,6 @@ class TaskExecutorClient:
         message = {"action": "health"}
         return await self._send_message(message)
 
-    async def get_task_status(self, task_id):
-        """Get task status"""
-        message = {"action": "get_status", "task_id": task_id}
-        return await self._send_message(message)
-
     async def _send_message(self, message):
         """Send message to task executor via Unix socket"""
         try:
