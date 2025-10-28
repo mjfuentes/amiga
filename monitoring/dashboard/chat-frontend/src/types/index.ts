@@ -22,3 +22,21 @@ export interface SocketResponse {
   type: 'direct' | 'task_started' | 'task_update';
   task_id?: string;
 }
+
+export interface TodoItem {
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed';
+  activeForm?: string;
+}
+
+export interface ToolCall {
+  timestamp: string;
+  tool_name: string;
+  success: boolean | null;
+  has_error: boolean;
+  error?: string;
+  output_preview?: string | { todos?: TodoItem[] };
+  parameters?: any;
+  in_progress: boolean;
+  duration_ms: number;
+}
