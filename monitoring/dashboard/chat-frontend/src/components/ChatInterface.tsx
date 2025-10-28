@@ -75,6 +75,17 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   };
 
+  // Handle clicks anywhere in the chat window to refocus input
+  const handleChatWindowClick = useCallback((e: React.MouseEvent) => {
+    // Don't refocus if clicking on interactive elements
+    const target = e.target as HTMLElement;
+    const isInteractive = target.closest('a, button, .task-link, .action-button, .copy-code-button, .command-suggestion');
+
+    if (!isInteractive) {
+      focusInput();
+    }
+  }, []);
+
   // Helper function to add task reference to chat input
   const addTaskToChat = (taskRef: string) => {
     // Add task reference to current input value
@@ -534,7 +545,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   // Show landing page when no messages and chat view not active
   if (messages.length === 0 && !chatViewActive) {
     return (
-      <div className="chat-interface landing">
+      <div className="chat-interface landing" onClick={handleChatWindowClick}>
         <Toaster />
         <div className="landing-container">
           <div className="landing-content">
@@ -577,7 +588,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }
 
   return (
-    <div className={`chat-interface ${isShuttingDown ? 'shutting-down' : ''}`}>
+    <div className={`chat-interface ${isShuttingDown ? 'shutting-down' : ''}`} onClick={handleChatWindowClick}>
       <Toaster />
       <div className="chat-header">
         <div className="chat-title">
