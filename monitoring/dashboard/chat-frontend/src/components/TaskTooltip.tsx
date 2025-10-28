@@ -236,7 +236,7 @@ export const TaskTooltip: React.FC<TaskTooltipProps> = ({
     return absolutePath;
   };
 
-  const renderToolCall = (call: ToolCall): JSX.Element => {
+  const renderToolCall = (call: ToolCall) => {
     const hasError = call.has_error || false;
     const tool = call.tool || 'unknown';
     const parameters = call.parameters || {};
