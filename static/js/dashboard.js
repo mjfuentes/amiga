@@ -428,38 +428,22 @@ function appendToolExecutionToModal(toolData) {
 
         const currentParams = JSON.stringify(toolCall.parameters);
 
-        // Check for running → completed lifecycle transition for SAME tool call
-        // This prevents duplicate entries when websocket sends both "start" and "complete" events
-        if (lastToolAttr === toolCall.tool && lastParamsAttr === currentParams &&
-            lastStatusAttr === 'running' && toolCall.status === 'completed') {
-            // Update the running entry to completed (merge lifecycle states)
+        // Priority 1: Consolidate consecutive identical tool_name (pre+post hook events)
+        // This prevents duplicate entries when the same tool fires twice consecutively
+        if (lastToolAttr === toolCall.tool) {
+            // If same tool_name, update the entry regardless of status/params
+            // Prefer completed status over running status for merged state
+            const mergedStatus = (lastStatusAttr === 'running' && toolCall.status === 'completed')
+                ? 'completed'
+                : toolCall.status;
+
+            // Use the latest data for the update
+            toolCall.status = mergedStatus;
 
             // Save scroll state
             const wasAtBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop <= scrollContainer.clientHeight + 50;
 
-            // Replace the running entry with completed version
-            const currentCalls = scrollContainer.querySelectorAll('.tool-call-entry').length;
-            const toolHtml = renderTerminalToolCall(toolCall, currentCalls);
-            lastCallElement.outerHTML = toolHtml;
-
-            // Restore scroll behavior
-            if (autoScrollEnabled || wasAtBottom) {
-                scrollToBottom();
-            }
-
-            return;
-        }
-
-        // If identical to previous (consolidation for repeated operations), increment count
-        if (lastToolAttr === toolCall.tool && lastParamsAttr === currentParams &&
-            lastStatusAttr === toolCall.status) {
-            // Increment count on the consolidated entry
-            toolCall.count = lastCountAttr + 1;
-
-            // Save scroll state
-            const wasAtBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop <= scrollContainer.clientHeight + 50;
-
-            // Replace the last entry with updated count
+            // Replace the last entry with updated version
             const currentCalls = scrollContainer.querySelectorAll('.tool-call-entry').length;
             const toolHtml = renderTerminalToolCall(toolCall, currentCalls);
             lastCallElement.outerHTML = toolHtml;
