@@ -110,6 +110,23 @@ class TaskMonitor:
 
                 # Check 1: Dead process
                 if pid and not is_process_alive(pid):
+                    # CRITICAL: Check if work completed successfully before marking failed
+                    # Handles race condition: work done → process dies → monitor catches it
+                    success_indicators = await self._check_task_success(task)
+
+                    if success_indicators['has_commits'] or success_indicators['branch_merged']:
+                        # Work completed successfully despite process death
+                        result_msg = "Task completed successfully (process died after work completion)"
+                        logger.info(f"Task {task_id}: Detected successful completion via git artifacts")
+                        await self.db.update_task(
+                            task_id=task_id,
+                            status="completed",
+                            result=result_msg
+                        )
+                        stuck_count += 1
+                        continue
+
+                    # No work artifacts found - genuine failure
                     error_msg = f"Process {pid} no longer running (dead/killed)"
                     logger.warning(f"Task {task_id}: {error_msg}")
                     await self._mark_task_failed(task_id, error_msg, "dead_process")
@@ -158,6 +175,102 @@ class TaskMonitor:
             logger.info(f"Task {task_id}: Marked as failed ({reason})")
         except Exception as e:
             logger.error(f"Task {task_id}: Failed to update status: {e}", exc_info=True)
+
+    async def _check_task_success(self, task: dict) -> dict:
+        """
+        Check if task produced successful work artifacts despite process death.
+
+        Uses git to detect:
+        - Commits in task branch
+        - Branch merged to main
+
+        This is a fallback for race conditions where work completes but process
+        dies before returning success status.
+
+        Args:
+            task: Task dict with task_id and workspace
+
+        Returns:
+            dict with success indicators:
+                has_commits: Task branch has commits
+                branch_merged: Task branch merged to main
+        """
+        task_id = task["task_id"]
+        workspace = task.get("workspace")
+
+        indicators = {
+            'has_commits': False,
+            'branch_merged': False,
+        }
+
+        if not workspace:
+            logger.debug(f"Task {task_id}: No workspace, skipping git success check")
+            return indicators
+
+        workspace_path = Path(workspace)
+        if not workspace_path.exists():
+            logger.debug(f"Task {task_id}: Workspace not found: {workspace}")
+            return indicators
+
+        try:
+            import subprocess
+
+            # Check for task branch existence and commits
+            branch_name = f"task/{task_id[:8]}"
+
+            # Check if branch exists
+            result = subprocess.run(
+                ["git", "rev-parse", "--verify", branch_name],
+                cwd=workspace,
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+
+            if result.returncode == 0:
+                # Branch exists - check for commits
+                result = subprocess.run(
+                    ["git", "log", "--oneline", branch_name, "-1"],
+                    cwd=workspace,
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    indicators['has_commits'] = True
+                    logger.debug(f"Task {task_id}: Found commits in {branch_name}")
+
+                # Check if branch was merged to main
+                result = subprocess.run(
+                    ["git", "branch", "--merged", "main"],
+                    cwd=workspace,
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0 and branch_name in result.stdout:
+                    indicators['branch_merged'] = True
+                    logger.debug(f"Task {task_id}: Branch {branch_name} merged to main")
+            else:
+                # Branch doesn't exist - check if merge commit exists in main
+                # Pattern: "Merge task {task_id[:8]}"
+                result = subprocess.run(
+                    ["git", "log", "--oneline", "main", "-10", "--grep", f"Merge task {task_id[:8]}"],
+                    cwd=workspace,
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    indicators['branch_merged'] = True
+                    logger.debug(f"Task {task_id}: Found merge commit in main")
+
+        except subprocess.TimeoutExpired:
+            logger.warning(f"Task {task_id}: Git command timeout during success check")
+        except Exception as e:
+            logger.warning(f"Task {task_id}: Error checking git success: {e}")
+
+        return indicators
 
     async def check_task_health(self, task_id: str) -> dict:
         """
