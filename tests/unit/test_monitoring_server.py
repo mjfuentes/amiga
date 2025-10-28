@@ -509,3 +509,82 @@ class TestPerformance:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestMarkFixedEndpoint:
+    """Test suite for mark-fixed endpoint"""
+
+    def test_mark_failed_task_as_fixed(self, client, mock_dependencies):
+        """Test marking a failed task as fixed"""
+        # Mock a failed task
+        mock_task = Mock()
+        mock_task.task_id = "test_task_123"
+        mock_task.status = "failed"
+        mock_task.error = "Some error message"
+        mock_dependencies["task_manager"].get_task.return_value = mock_task
+
+        # Mock updated task
+        updated_task = Mock()
+        updated_task.task_id = "test_task_123"
+        updated_task.status = "completed"
+        updated_task.error = None
+
+        async def mock_update(*args, **kwargs):
+            return True
+
+        async def mock_get_updated(*args, **kwargs):
+            return updated_task
+
+        # Mock the asyncio operations
+        with patch("monitoring.server._agent_pool_loop") as mock_loop:
+            mock_loop.__bool__.return_value = True  # Make it truthy
+            
+            with patch("asyncio.run_coroutine_threadsafe") as mock_run:
+                mock_future = Mock()
+                mock_future.result.return_value = updated_task
+                mock_run.return_value = mock_future
+
+                response = client.post("/api/tasks/test_task_123/mark-fixed")
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["task_id"] == "test_task_123"
+        assert data["status"] == "completed"
+        assert "marked as fixed" in data["message"].lower()
+
+    def test_mark_fixed_task_not_found(self, client, mock_dependencies):
+        """Test marking non-existent task as fixed"""
+        mock_dependencies["task_manager"].get_task.return_value = None
+
+        response = client.post("/api/tasks/nonexistent_task/mark-fixed")
+
+        assert response.status_code == 404
+        data = json.loads(response.data)
+        assert "not found" in data["error"].lower()
+
+    def test_mark_fixed_non_failed_task(self, client, mock_dependencies):
+        """Test marking a non-failed task as fixed (should fail)"""
+        mock_task = Mock()
+        mock_task.task_id = "test_task_123"
+        mock_task.status = "completed"  # Not failed
+        mock_dependencies["task_manager"].get_task.return_value = mock_task
+
+        response = client.post("/api/tasks/test_task_123/mark-fixed")
+
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert "failed" in data["error"].lower()
+
+    def test_mark_fixed_agent_pool_not_ready(self, client, mock_dependencies):
+        """Test mark-fixed when agent pool is not ready"""
+        mock_task = Mock()
+        mock_task.task_id = "test_task_123"
+        mock_task.status = "failed"
+        mock_dependencies["task_manager"].get_task.return_value = mock_task
+
+        with patch("monitoring.server._agent_pool_loop", None):
+            response = client.post("/api/tasks/test_task_123/mark-fixed")
+
+        assert response.status_code == 503
+        data = json.loads(response.data)
+        assert "not ready" in data["error"].lower()

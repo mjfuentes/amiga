@@ -1177,6 +1177,70 @@ def revert_task(task_id):
         logger.error(f"Error creating revert task for {task_id}: {e}", exc_info=True)
         return jsonify({"error": f"Internal server error: {str(e)}"}), 500
 
+@app.route("/api/tasks/<task_id>/mark-fixed", methods=["POST"])
+def mark_task_fixed(task_id):
+    """
+    Mark a failed task as fixed (update status to completed and clear error).
+    
+    This endpoint is public (no auth required) to allow dashboard monitoring
+    usage, similar to the stop and revert endpoints.
+    
+    Args:
+        task_id: The ID of the task to mark as fixed
+    
+    Returns:
+        200: Task updated successfully
+        404: Task not found
+        400: Invalid request (task not failed)
+        500: Internal server error
+    """
+    try:
+        logger.info(f"Mark-as-fixed request received for task {task_id}")
+        
+        # Get the task to verify it exists
+        task = task_manager.get_task(task_id)
+        if not task:
+            return jsonify({"error": f"Task {task_id} not found"}), 404
+        
+        # Only allow marking failed tasks as fixed
+        if task.status != "failed":
+            return jsonify({"error": f"Can only mark failed tasks as fixed (current status: {task.status})"}), 400
+        
+        # Update task status using asyncio
+        global _agent_pool_loop
+        if _agent_pool_loop is None:
+            return jsonify({"error": "Server not ready - agent pool not started"}), 503
+        
+        async def update_task_status():
+            """Update task status to completed and clear error"""
+            await task_manager.update_task(
+                task_id=task_id,
+                status="completed",
+                error=None,  # Clear the error message
+            )
+            # Return updated task
+            return task_manager.get_task(task_id)
+        
+        # Execute in agent pool's event loop
+        future = asyncio.run_coroutine_threadsafe(update_task_status(), _agent_pool_loop)
+        updated_task = future.result(timeout=10)  # 10s timeout for update
+        
+        logger.info(f"API: Marked task {task_id} as fixed (status: {updated_task.status})")
+        
+        return jsonify({
+            "task_id": task_id,
+            "status": updated_task.status,
+            "message": f"Task {task_id} marked as fixed",
+        }), 200
+        
+    except asyncio.TimeoutError:
+        logger.error(f"Timeout marking task {task_id} as fixed", exc_info=True)
+        return jsonify({"error": "Task update timed out"}), 504
+    except Exception as e:
+        logger.error(f"Error marking task {task_id} as fixed: {e}", exc_info=True)
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+
+
 
 
 
@@ -3302,16 +3366,24 @@ def setup_graceful_shutdown():
         sig_name = "SIGTERM" if signum == signal.SIGTERM else "SIGINT"
         logger.info(f"Received {sig_name}, initiating graceful shutdown...")
 
-        # Shutdown agent pool
-        if _agent_pool_loop:
-            logger.info("Stopping agent pool...")
-            asyncio.run_coroutine_threadsafe(agent_pool.stop(), _agent_pool_loop)
-            _agent_pool_loop.call_soon_threadsafe(_agent_pool_loop.stop)
-
-        # Shutdown task monitor
-        if _agent_pool_loop:
+        # Schedule shutdown tasks BEFORE stopping the loop
+        if _agent_pool_loop and not _agent_pool_loop.is_closed():
             logger.info("Stopping task monitor...")
-            asyncio.run_coroutine_threadsafe(task_monitor.stop(), _agent_pool_loop)
+            try:
+                future_monitor = asyncio.run_coroutine_threadsafe(task_monitor.stop(), _agent_pool_loop)
+                future_monitor.result(timeout=2.0)  # Wait up to 2s
+            except Exception as e:
+                logger.warning(f"Error stopping task monitor: {e}")
+
+            logger.info("Stopping agent pool...")
+            try:
+                future_pool = asyncio.run_coroutine_threadsafe(agent_pool.stop(), _agent_pool_loop)
+                future_pool.result(timeout=2.0)  # Wait up to 2s
+            except Exception as e:
+                logger.warning(f"Error stopping agent pool: {e}")
+
+            # Now stop the event loop
+            _agent_pool_loop.call_soon_threadsafe(_agent_pool_loop.stop)
 
         # Close database
         logger.info("Closing database connection...")
@@ -3447,14 +3519,26 @@ def run_server(host: str = "0.0.0.0", port: int = 3000, debug: bool = False):  #
     try:
         socketio.run(app, host=host, port=port, debug=debug, allow_unsafe_werkzeug=True)
     finally:
-        logger.info("Shutting down task monitor...")
-        if _agent_pool_loop:
-            asyncio.run_coroutine_threadsafe(task_monitor.stop(), _agent_pool_loop)
-        logger.info("Shutting down agent pool...")
-        if _agent_pool_loop:
-            _agent_pool_loop.call_soon_threadsafe(_agent_pool_loop.stop)
+        logger.info("Server shutdown - cleaning up...")
+        if _agent_pool_loop and not _agent_pool_loop.is_closed():
+            logger.info("Shutting down task monitor...")
+            try:
+                future = asyncio.run_coroutine_threadsafe(task_monitor.stop(), _agent_pool_loop)
+                future.result(timeout=2.0)
+            except Exception as e:
+                logger.warning(f"Error stopping task monitor in finally: {e}")
+
+            logger.info("Shutting down agent pool...")
+            try:
+                _agent_pool_loop.call_soon_threadsafe(_agent_pool_loop.stop)
+            except Exception as e:
+                logger.warning(f"Error stopping agent pool in finally: {e}")
+
         logger.info("Closing database connection...")
-        close_database()
+        try:
+            close_database()
+        except Exception as e:
+            logger.warning(f"Error closing database: {e}")
 
 
 # --- Auto-Restart on File Changes ---

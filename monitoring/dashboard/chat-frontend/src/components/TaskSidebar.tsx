@@ -174,6 +174,27 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
     window.location.href = `/dashboard#${taskId}?ref=chat`;
   };
 
+  const handleMarkFixed = async (taskId: string, event: React.MouseEvent) => {
+    // Stop propagation to prevent task click
+    event.stopPropagation();
+    
+    try {
+      const response = await fetch(`/api/tasks/${taskId}/mark-fixed`, {
+        method: 'POST',
+      });
+      
+      if (response.ok) {
+        console.log(`Task ${taskId} marked as fixed`);
+        // Task list will update via SSE
+      } else {
+        const error = await response.json();
+        console.error('Failed to mark task as fixed:', error);
+      }
+    } catch (error) {
+      console.error('Error marking task as fixed:', error);
+    }
+  };
+
   if (!visible) return null;
 
   // Filter tasks based on selected filter
@@ -253,6 +274,17 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
                   <div className="task-tools">
                     <span className="tools-label">Tools:</span>
                     <span className="tools-count">{task.tool_usage.length}</span>
+                  </div>
+                )}
+                {task.status === 'failed' && (
+                  <div className="task-actions">
+                    <button
+                      className="mark-fixed-button"
+                      onClick={(e) => handleMarkFixed(task.task_id, e)}
+                      title="Mark this task as fixed"
+                    >
+                      Mark as Fixed
+                    </button>
                   </div>
                 )}
               </div>
