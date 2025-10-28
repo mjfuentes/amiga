@@ -83,8 +83,11 @@ class AgentPool:
         logger.info("Stopping agent pool...")
 
         # Send sentinel values to signal agents to stop
-        for _ in range(self.max_agents):
-            await self.task_queue.put(_SENTINEL)
+        # Use max priority and counter to ensure sentinels are processed
+        for i in range(self.max_agents):
+            # Format: (priority, counter, sentinel) - matches task tuple structure
+            # Use negative counter to ensure sentinels are processed first
+            await self.task_queue.put((TaskPriority.URGENT, -(i + 1), _SENTINEL))
 
         # Wait for all agents to finish
         try:
@@ -144,13 +147,15 @@ class AgentPool:
                     # Get next task from queue (priority-ordered)
                     item = await self.task_queue.get()
 
+                    # Unpack priority queue item
+                    priority, counter, task_data = item
+
                     # Check for shutdown signal
-                    if item is _SENTINEL:
+                    if task_data is _SENTINEL:
                         logger.info(f"Agent {agent_id} received shutdown signal")
                         break
 
-                    # Unpack priority queue item: (priority, counter, (task_func, args, kwargs))
-                    priority, counter, task_data = item
+                    # Unpack task data: (task_func, args, kwargs)
                     task_func, args, kwargs = task_data
 
                     # Execute task
