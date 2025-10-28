@@ -14,6 +14,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import toast, { Toaster } from 'react-hot-toast';
 import { Message as MessageType } from '../types';
 import { TaskTooltip } from './TaskTooltip';
+import { TaskModal } from './TaskModal';
 import './ChatInterface.css';
 
 interface Task {
@@ -58,6 +59,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [isShuttingDown, setIsShuttingDown] = useState(false);
   const [taskStatusMap, setTaskStatusMap] = useState<Map<string, string>>(new Map());
   const [activeTooltip, setActiveTooltip] = useState<{ taskId: string; element: HTMLElement } | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const lastMessageCountRef = useRef(messages.length);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputListenerAttachedRef = useRef(false);
@@ -74,17 +77,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       inputRef.current = textarea;
     }
   };
-
-  // Handle clicks anywhere in the chat window to refocus input
-  const handleChatWindowClick = useCallback((e: React.MouseEvent) => {
-    // Don't refocus if clicking on interactive elements
-    const target = e.target as HTMLElement;
-    const isInteractive = target.closest('a, button, .task-link, .action-button, .copy-code-button, .command-suggestion');
-
-    if (!isInteractive) {
-      focusInput();
-    }
-  }, []);
 
   // Helper function to add task reference to chat input
   const addTaskToChat = (taskRef: string) => {
@@ -354,8 +346,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           data-status={status || 'running'}
           onClick={(e) => {
             e.preventDefault();
-            // Navigate to monitoring dashboard with task highlighted
-            window.location.href = `/dashboard#${urlTaskId}?ref=chat`;
+            // Open task modal instead of navigating
+            setSelectedTaskId(taskId);
+            setIsTaskModalOpen(true);
           }}
           onMouseEnter={(e) => {
             const target = e.currentTarget as HTMLElement;
@@ -545,7 +538,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   // Show landing page when no messages and chat view not active
   if (messages.length === 0 && !chatViewActive) {
     return (
-      <div className="chat-interface landing" onClick={handleChatWindowClick}>
+      <div className="chat-interface landing">
         <Toaster />
         <div className="landing-container">
           <div className="landing-content">
@@ -588,7 +581,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }
 
   return (
-    <div className={`chat-interface ${isShuttingDown ? 'shutting-down' : ''}`} onClick={handleChatWindowClick}>
+    <div className={`chat-interface ${isShuttingDown ? 'shutting-down' : ''}`}>
       <Toaster />
       <div className="chat-header">
         <div className="chat-title">
@@ -665,7 +658,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                                       data-status={status || 'running'}
                                       onClick={(e) => {
                                         e.preventDefault();
-                                        window.location.href = `/dashboard#${urlTaskId}?ref=chat`;
+                                        // Open task modal
+                                        setSelectedTaskId(urlTaskId);
+                                        setIsTaskModalOpen(true);
                                       }}
                                       onMouseEnter={(e) => {
                                         const target = e.currentTarget as HTMLElement;
@@ -811,6 +806,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           onClose={() => setActiveTooltip(null)}
         />
       )}
+
+      {/* Task Modal */}
+      <TaskModal
+        taskId={selectedTaskId}
+        isOpen={isTaskModalOpen}
+        onClose={() => {
+          setIsTaskModalOpen(false);
+          setSelectedTaskId(null);
+        }}
+      />
     </div>
   );
 };
