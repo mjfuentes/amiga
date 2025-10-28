@@ -60,6 +60,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputListenerAttachedRef = useRef(false);
   const handleSendRef = useRef<((message: string) => Promise<void>) | null>(null);
+  const lastUserMessageRef = useRef<HTMLDivElement | null>(null);
 
   // Helper function to focus the input
   const focusInput = () => {
@@ -68,6 +69,18 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     if (textarea) {
       textarea.focus();
       inputRef.current = textarea;
+    }
+  };
+
+  // Helper function to scroll to show the user's sent message and subsequent conversation
+  const scrollToUserMessage = () => {
+    if (lastUserMessageRef.current) {
+      // Smooth scroll to bring the last user message into view at the top
+      lastUserMessageRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+        inline: 'nearest'
+      });
     }
   };
 
@@ -149,10 +162,18 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     return () => clearTimeout(timer);
   }, [attachInputListener]);
 
-  // Re-focus after sending messages
+  // Re-focus after sending messages and handle auto-scroll
   useEffect(() => {
     if (messages.length > lastMessageCountRef.current) {
       const lastMessage = messages[messages.length - 1];
+
+      // If user just sent a message, scroll to show it
+      if (lastMessage.role === 'user') {
+        setTimeout(() => {
+          scrollToUserMessage();
+        }, 100);
+      }
+
       if (lastMessage.role === 'assistant') {
         setIsTyping(false);
         // Re-focus after assistant responds
@@ -547,7 +568,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               ) : null
             }
           >
-            {messages.map((msg) => (
+            {messages.map((msg, index) => (
               <Message
                 key={msg.id}
                 model={{
@@ -559,12 +580,13 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 }}
               >
                 <Message.CustomContent>
-                  <div className="message-wrapper">
+                  <div
+                    className="message-wrapper"
+                    ref={msg.role === 'user' && index === messages.length - 1 ? lastUserMessageRef : null}
+                  >
                     <div className="message-header">
                       {msg.role === 'user' && (
-                        <div className="user-avatar" aria-label="Your message">
-                          <span>You</span>
-                        </div>
+                        <div className="user-avatar" aria-label="Your message" />
                       )}
                       {msg.role === 'assistant' && (
                         <div className="assistant-avatar" aria-label="Assistant message">
