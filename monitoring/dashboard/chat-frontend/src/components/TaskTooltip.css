@@ -12,6 +12,11 @@
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
+.task-tooltip-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* Compact variant */
 .task-tooltip-compact {
   max-width: 200px;
