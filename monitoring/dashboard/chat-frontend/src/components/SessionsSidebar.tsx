@@ -33,53 +33,53 @@ export const SessionsSidebar: React.FC<SessionsSidebarProps> = ({ visible }) => 
   useEffect(() => {
     if (!visible) return;
 
-    let eventSource: EventSource | null = null;
+    let intervalId: NodeJS.Timeout | null = null;
 
-    const connectSSE = () => {
+    const fetchSessions = async () => {
       try {
-        // Connect to the same SSE endpoint as the monitoring dashboard
-        eventSource = new EventSource('/api/stream/metrics?hours=24');
+        // Fetch sessions based on current filter (same logic as monitoring dashboard)
+        const endpoint = filter === 'active'
+          ? '/api/metrics/cli-sessions?minutes=5'  // Active: last 5 minutes
+          : '/api/metrics/cli-sessions?hours=24';  // Completed: last 24 hours
 
-        eventSource.onopen = () => {
-          console.log('Sessions sidebar connected to SSE');
-          setConnected(true);
-        };
+        const response = await fetch(endpoint);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
 
-        eventSource.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            // SSE sends: { claude_sessions: { recent_sessions: [...] } }
-            const sessionsList = data?.claude_sessions?.recent_sessions;
-            if (sessionsList && Array.isArray(sessionsList)) {
-              setSessions(sessionsList);
-            }
-          } catch (error) {
-            console.error('Failed to parse SSE data:', error);
-          }
-        };
+        const data = await response.json();
+        const sessionsList = data?.sessions || [];
 
-        eventSource.onerror = (error) => {
-          console.error('SSE connection error:', error);
-          setConnected(false);
-          eventSource?.close();
+        // For completed filter, only show sessions that are NOT active
+        if (filter === 'completed') {
+          const completedSessions = sessionsList.filter((session: Session) => {
+            const status = getSessionStatus(session.last_activity);
+            return status !== 'active';
+          });
+          setSessions(completedSessions);
+        } else {
+          setSessions(sessionsList);
+        }
 
-          // Retry connection after 5 seconds
-          setTimeout(connectSSE, 5000);
-        };
+        setConnected(true);
       } catch (error) {
-        console.error('Failed to create EventSource:', error);
+        console.error('Failed to fetch sessions:', error);
         setConnected(false);
       }
     };
 
-    connectSSE();
+    // Initial fetch
+    fetchSessions();
+
+    // Poll every 5 seconds for updates
+    intervalId = setInterval(fetchSessions, 5000);
 
     return () => {
-      if (eventSource) {
-        eventSource.close();
+      if (intervalId) {
+        clearInterval(intervalId);
       }
     };
-  }, [visible]);
+  }, [visible, filter]);
 
   const formatSessionId = (sessionId: string) => {
     // Extract short ID (first 6 chars after "task_")
