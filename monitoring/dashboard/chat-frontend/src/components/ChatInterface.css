@@ -274,6 +274,8 @@
   color: #6a9fb5;
   border-color: #3a3a3a;
   background: rgba(106, 159, 181, 0.1);
+  font-size: 0.5rem; /* Smaller font to fit "You" text */
+  padding: 0 2px; /* Add horizontal padding for text */
 }
 
 .assistant-avatar {
@@ -990,11 +992,26 @@
   .assistant-avatar {
     width: 24px;
     height: 24px;
+  }
+
+  .user-avatar {
+    font-size: 0.5rem;
+  }
+
+  .assistant-avatar {
     font-size: 0.625rem;
   }
 
   .message-time {
     font-size: 0.625rem;
+  }
+
+  .message-content {
+    padding-left: 28px; /* Adjust for larger mobile avatar (24px + 4px gap) */
+  }
+
+  .message-actions {
+    padding-left: 28px; /* Match message-content padding */
   }
 
   .code-block-header {
