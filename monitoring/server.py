@@ -1738,7 +1738,8 @@ def claude_sessions_metrics():
         """,
             (cutoff_time,),
         )
-        total_sessions = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        total_sessions = result[0] if result else 0
 
         # Get total tool calls
         cursor.execute(
@@ -1749,7 +1750,8 @@ def claude_sessions_metrics():
         """,
             (cutoff_time,),
         )
-        total_tool_calls = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        total_tool_calls = result[0] if result else 0
 
         # Get tools breakdown
         cursor.execute(
@@ -1772,7 +1774,8 @@ def claude_sessions_metrics():
         """,
             (cutoff_time,),
         )
-        total_errors = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        total_errors = result[0] if result else 0
 
         # Get recent sessions (sessions with activity, including bot tasks and CLI sessions)
         cursor.execute(
@@ -2096,7 +2099,8 @@ def running_tasks():
         if active_only:
             # Only running tasks (actively executing)
             cursor.execute("SELECT COUNT(*) FROM tasks WHERE status = 'running'")
-            total = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            total = result[0] if result else 0
 
             # Get paginated tasks
             cursor.execute(
@@ -2112,7 +2116,8 @@ def running_tasks():
         else:
             # All non-completed tasks (running, pending, failed, stopped)
             cursor.execute("SELECT COUNT(*) FROM tasks WHERE status != 'completed'")
-            total = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            total = result[0] if result else 0
 
             # Get paginated tasks
             cursor.execute(
@@ -2174,7 +2179,8 @@ def completed_tasks():
         # Get total count of completed tasks
         cursor = task_manager.db.conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM tasks WHERE status = 'completed'")
-        total = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        total = result[0] if result else 0
 
         # Calculate offset
         offset = (page - 1) * page_size
@@ -2303,7 +2309,8 @@ def all_tasks():
         # Get total count of all tasks
         cursor = task_manager.db.conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM tasks")
-        total = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        total = result[0] if result else 0
 
         # Calculate offset
         offset = (page - 1) * page_size
@@ -3037,11 +3044,13 @@ def _gather_session_metrics(hours: int) -> dict:
 
     # Count distinct sessions
     cursor.execute("SELECT COUNT(DISTINCT task_id) FROM tool_usage WHERE timestamp >= ?", (cutoff_time,))
-    total_sessions = cursor.fetchone()[0]
+    result = cursor.fetchone()
+    total_sessions = result[0] if result else 0
 
     # Count tool calls
     cursor.execute("SELECT COUNT(*) FROM tool_usage WHERE timestamp >= ?", (cutoff_time,))
-    total_tool_calls = cursor.fetchone()[0]
+    result = cursor.fetchone()
+    total_tool_calls = result[0] if result else 0
 
     # Get tools breakdown
     cursor.execute(
@@ -3052,7 +3061,8 @@ def _gather_session_metrics(hours: int) -> dict:
 
     # Get error count
     cursor.execute("SELECT COUNT(*) FROM tool_usage WHERE timestamp >= ? AND success = 0", (cutoff_time,))
-    total_errors = cursor.fetchone()[0]
+    result = cursor.fetchone()
+    total_errors = result[0] if result else 0
 
     # Get recent sessions
     cursor.execute(
