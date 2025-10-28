@@ -1148,25 +1148,25 @@ function renderPlanningProgress(toolCalls) {
     // Get the latest TodoWrite call for current state
     const latestCall = todoWriteCalls[todoWriteCalls.length - 1];
 
-    // Parse the output preview to get todos
+    // Get todos directly from parameters (stored in SQLite DB)
     let todos = [];
-    try {
-        if (latestCall.output_preview) {
-            // output_preview is a string representation of a Python dict
-            // Convert single quotes to double quotes for JSON parsing
-            const jsonStr = latestCall.output_preview
-                .replace(/'/g, '"')
-                .replace(/True/g, 'true')
-                .replace(/False/g, 'false')
-                .replace(/None/g, 'null');
-
-            const preview = JSON.parse(jsonStr);
-            todos = preview.newTodos || [];
+    if (latestCall.parameters && latestCall.parameters.todos) {
+        todos = latestCall.parameters.todos;
+    } else {
+        // Fallback: try parsing output_preview if parameters not available
+        try {
+            if (latestCall.output_preview) {
+                const jsonStr = latestCall.output_preview
+                    .replace(/'/g, '"')
+                    .replace(/True/g, 'true')
+                    .replace(/False/g, 'false')
+                    .replace(/None/g, 'null');
+                const preview = JSON.parse(jsonStr);
+                todos = preview.newTodos || [];
+            }
+        } catch (error) {
+            console.error('Error parsing TodoWrite output:', error);
         }
-    } catch (error) {
-        console.error('Error parsing TodoWrite output:', error);
-        container.innerHTML = '';
-        return;
     }
 
     if (todos.length === 0) {
