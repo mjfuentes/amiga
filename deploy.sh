@@ -163,17 +163,17 @@ restart_server() {
         fi
     fi
 
-    # Also kill by process name (case-insensitive, specific to monitoring)
-    # Pattern: [Pp]ython.*monitoring.*server.py OR [Pp]ython.*server.py in monitoring dir
-    if pgrep -fi "[Pp]ython.*(monitoring|server\.py)" | xargs ps -p 2>/dev/null | grep -q "server.py"; then
+    # Also kill by process name - MUST be specific to avoid killing Claude Code CLI
+    # Pattern: python.*/monitoring/server.py (exact path match only)
+    if pgrep -f "python.*/monitoring/server\.py" >/dev/null 2>&1; then
         echo "📋 Stopping any remaining monitoring server processes..."
-        pkill -TERM -fi "[Pp]ython.*(monitoring.*server\.py|server\.py)" 2>/dev/null || true
+        pkill -TERM -f "python.*/monitoring/server\.py" 2>/dev/null || true
         sleep 1
 
         # Force kill if still running
-        if pgrep -fi "[Pp]ython.*(monitoring|server\.py)" | xargs ps -p 2>/dev/null | grep -q "server.py"; then
+        if pgrep -f "python.*/monitoring/server\.py" >/dev/null 2>&1; then
             echo "⚠️  Force killing remaining server processes..."
-            pkill -9 -fi "[Pp]ython.*(monitoring.*server\.py|server\.py)" 2>/dev/null || true
+            pkill -9 -f "python.*/monitoring/server\.py" 2>/dev/null || true
             sleep 1
         fi
     fi
