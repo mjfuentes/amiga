@@ -52,7 +52,11 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
    d. **Merge from main repo directory** (worktrees can't checkout main):
    ```bash
    cd "$MAIN_REPO"
-   git merge "task/$TASK_ID" --no-ff -m "Merge task/$TASK_ID: <brief_description>
+   # Configure non-interactive git to prevent hangs
+   export GIT_EDITOR=true
+   export GIT_MERGE_AUTOEDIT=no
+   # Use timeout to prevent infinite hangs (60 seconds max)
+   timeout 60s git merge "task/$TASK_ID" --no-ff -m "Merge task $TASK_ID: <brief_description>
 
    🤖 Generated with [Claude Code](https://claude.com/claude-code)
 
@@ -111,6 +115,12 @@ Action required: <what needs to be fixed>
 - Abort merge
 - Return conflict files
 - Preserve task branch for manual resolution
+
+**Timeout (git hangs)**:
+- timeout command kills git after 60s
+- Abort merge if in progress
+- Return timeout error with task ID
+- Preserve task branch for investigation
 
 **Not in git repo**:
 - Check if `.git` exists

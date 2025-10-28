@@ -116,7 +116,7 @@ class TestFeatureName:
 
 **Example commit message**:
 ```
-Add Redis caching for session data
+Add Redis caching for session data (task: $TASK_ID)
 
 - Implemented cache layer in session.py:45-120
 - Added TTL expiration and invalidation logic
@@ -145,7 +145,8 @@ Workflow:
 6. Return summary to orchestrator
 
 Commit message format:
-- Brief and specific: "Fix null pointer in auth.py:42" not "Updated files"
+- Brief and specific with task ID: "Fix null pointer in auth.py:42 (task: $TASK_ID)" not "Updated files"
+- CRITICAL: Include task ID using $TASK_ID environment variable for process tracking
 - Use `file_path:line_number` format for references
 - Standard footer:
   ```
@@ -175,7 +176,8 @@ git branch --show-current
    git checkout main
 
    # Merge your work (no-ff for merge commit)
-   git merge task/<task_id> --no-ff -m "Merge task/<task_id>: <brief description>
+   # NOTE: git-merge agent handles this now, you don't need to manually merge
+   git merge task/<task_id> --no-ff -m "Merge task <task_id>: <brief description>
 
    🤖 Generated with [Claude Code](https://claude.com/claude-code)
 

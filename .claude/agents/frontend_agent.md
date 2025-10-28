@@ -258,7 +258,8 @@ Workflow:
 - Shows access URLs
 
 Commit message format:
-- Brief and specific: "Add responsive navigation bar to chat interface"
+- Brief and specific with task ID: "Add responsive navigation bar to chat interface (task: $TASK_ID)"
+- CRITICAL: Include task ID using $TASK_ID environment variable for process tracking
 - Standard footer:
   ```
   🤖 Generated with [Claude Code](https://claude.com/claude-code)
