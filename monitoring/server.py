@@ -3077,10 +3077,19 @@ def _gather_session_metrics(hours: int) -> dict:
     """,
         (cutoff_time,),
     )
-    recent_sessions = [
-        {"session_id": r[0], "total_tools": r[1], "blocked": 0, "errors": r[2], "last_activity": r[3]}
-        for r in cursor.fetchall()
-    ]
+    recent_sessions = []
+    for r in cursor.fetchall():
+        # Defensive: ensure row has all 4 expected columns
+        if len(r) < 4:
+            logger.warning(f"Session row has only {len(r)} columns, expected 4: {r}")
+            continue
+        recent_sessions.append({
+            "session_id": r[0],
+            "total_tools": r[1],
+            "blocked": 0,
+            "errors": r[2] if r[2] is not None else 0,
+            "last_activity": r[3]
+        })
 
     return {
         "total_sessions": total_sessions,
@@ -3121,6 +3130,10 @@ def _gather_activity_data(limit: int = 8) -> list[dict]:
     )
 
     for row in cursor.fetchall():
+        # Defensive: ensure row has all 4 expected columns
+        if len(row) < 4:
+            logger.warning(f"Activity task row has only {len(row)} columns, expected 4: {row}")
+            continue
         task_id, description, status, activity_log_json = row
         activity_log = json.loads(activity_log_json) if activity_log_json else []
 
@@ -3156,6 +3169,10 @@ def _gather_activity_data(limit: int = 8) -> list[dict]:
     )
 
     for row in cursor.fetchall():
+        # Defensive: ensure row has all 3 expected columns
+        if len(row) < 3:
+            logger.warning(f"CLI session row has only {len(row)} columns, expected 3: {row}")
+            continue
         task_id, last_activity, tool_count = row
         activity.append(
             {
@@ -3206,10 +3223,24 @@ def generate_sse_updates(hours: int = 24) -> Generator[str, None, None]:
             # Reload tasks to get latest state
             task_manager.reload_tasks()
 
-            # Gather all metrics
-            overview = metrics_aggregator.get_complete_snapshot(hours=hours)
-            sessions_metrics = _gather_session_metrics(hours)
-            activity = _gather_activity_data(limit=8)
+            # Gather all metrics with specific error tracking
+            try:
+                overview = metrics_aggregator.get_complete_snapshot(hours=hours)
+            except Exception as e:
+                logger.error(f"Error in get_complete_snapshot: {e}", exc_info=True)
+                raise
+
+            try:
+                sessions_metrics = _gather_session_metrics(hours)
+            except Exception as e:
+                logger.error(f"Error in _gather_session_metrics: {e}", exc_info=True)
+                raise
+
+            try:
+                activity = _gather_activity_data(limit=8)
+            except Exception as e:
+                logger.error(f"Error in _gather_activity_data: {e}", exc_info=True)
+                raise
 
             # Create current snapshot
             current_snapshot = {
