@@ -32,10 +32,10 @@ def temp_db(tmp_path):
 @pytest.fixture
 def mock_db():
     """Mock database for testing"""
-    db = AsyncMock(spec=Database)
-    db.get_tasks_by_status = AsyncMock()
-    db.update_task = AsyncMock()
-    db.get_tasks = AsyncMock()
+    db = MagicMock(spec=Database)
+    db.get_tasks_by_status = MagicMock()  # Sync method
+    db.update_task = AsyncMock()  # Async method
+    db.get_task = MagicMock()  # Sync method
     return db
 
 
@@ -200,14 +200,12 @@ async def test_kill_stuck_process(mock_db):
 @pytest.mark.asyncio
 async def test_check_task_health_healthy(mock_db):
     """Test health check for healthy task"""
-    mock_db.get_tasks.return_value = [
-        {
-            "task_id": "healthy123",
-            "status": "running",
-            "pid": None,
-            "updated_at": datetime.now().isoformat()
-        }
-    ]
+    mock_db.get_task.return_value = {
+        "task_id": "healthy123",
+        "status": "running",
+        "pid": None,
+        "updated_at": datetime.now().isoformat()
+    }
 
     monitor = TaskMonitor(mock_db, check_interval_seconds=1, task_timeout_minutes=30)
 
@@ -220,14 +218,12 @@ async def test_check_task_health_healthy(mock_db):
 @pytest.mark.asyncio
 async def test_check_task_health_dead_process(mock_db):
     """Test health check detects dead process"""
-    mock_db.get_tasks.return_value = [
-        {
-            "task_id": "dead123",
-            "status": "running",
-            "pid": 999999,  # Non-existent PID
-            "updated_at": datetime.now().isoformat()
-        }
-    ]
+    mock_db.get_task.return_value = {
+        "task_id": "dead123",
+        "status": "running",
+        "pid": 999999,  # Non-existent PID
+        "updated_at": datetime.now().isoformat()
+    }
 
     monitor = TaskMonitor(mock_db, check_interval_seconds=1, task_timeout_minutes=30)
 
@@ -242,14 +238,12 @@ async def test_check_task_health_dead_process(mock_db):
 async def test_check_task_health_timeout(mock_db):
     """Test health check detects timeout"""
     old_time = datetime.now() - timedelta(minutes=35)
-    mock_db.get_tasks.return_value = [
-        {
-            "task_id": "timeout123",
-            "status": "running",
-            "pid": None,
-            "updated_at": old_time.isoformat()
-        }
-    ]
+    mock_db.get_task.return_value = {
+        "task_id": "timeout123",
+        "status": "running",
+        "pid": None,
+        "updated_at": old_time.isoformat()
+    }
 
     monitor = TaskMonitor(mock_db, check_interval_seconds=1, task_timeout_minutes=30)
 
@@ -263,7 +257,7 @@ async def test_check_task_health_timeout(mock_db):
 @pytest.mark.asyncio
 async def test_check_task_health_not_found(mock_db):
     """Test health check for non-existent task"""
-    mock_db.get_tasks.return_value = []
+    mock_db.get_task.return_value = None
 
     monitor = TaskMonitor(mock_db, check_interval_seconds=1, task_timeout_minutes=30)
 
@@ -276,14 +270,12 @@ async def test_check_task_health_not_found(mock_db):
 @pytest.mark.asyncio
 async def test_check_task_health_not_running(mock_db):
     """Test health check for non-running task"""
-    mock_db.get_tasks.return_value = [
-        {
-            "task_id": "completed123",
-            "status": "completed",
-            "pid": None,
-            "updated_at": datetime.now().isoformat()
-        }
-    ]
+    mock_db.get_task.return_value = {
+        "task_id": "completed123",
+        "status": "completed",
+        "pid": None,
+        "updated_at": datetime.now().isoformat()
+    }
 
     monitor = TaskMonitor(mock_db, check_interval_seconds=1, task_timeout_minutes=30)
 
@@ -328,3 +320,75 @@ async def test_multiple_stuck_tasks(mock_db):
 
     # All 3 tasks should be marked failed
     assert mock_db.update_task.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_dead_process_with_commits_marks_completed(mock_db, tmp_path):
+    """Test dead process with git commits marks task completed"""
+    # Setup git repo
+    repo_path = tmp_path / "test_repo"
+    repo_path.mkdir()
+    os.system(f"cd {repo_path} && git init && git config user.email 'test@test.com' && git config user.name 'Test'")
+    os.system(f"cd {repo_path} && touch file.txt && git add . && git commit -m 'initial'")
+    os.system(f"cd {repo_path} && git checkout -b task/abc12345 && touch new.txt && git add . && git commit -m 'work'")
+
+    mock_db.get_tasks_by_status.return_value = [{
+        "task_id": "abc12345",
+        "pid": 999999,  # Dead PID
+        "updated_at": datetime.now().isoformat(),
+        "workspace": str(repo_path)
+    }]
+
+    monitor = TaskMonitor(mock_db, check_interval_seconds=1, task_timeout_minutes=30)
+    await monitor._check_stuck_tasks()
+
+    # Should mark completed, not failed
+    call_args = mock_db.update_task.call_args[1]
+    assert call_args["status"] == "completed"
+    assert "work completion" in call_args["result"]
+
+
+@pytest.mark.asyncio
+async def test_dead_process_with_merge_marks_completed(mock_db, tmp_path):
+    """Test dead process with merged branch marks completed"""
+    repo_path = tmp_path / "test_repo"
+    repo_path.mkdir()
+    os.system(f"cd {repo_path} && git init && git config user.email 'test@test.com' && git config user.name 'Test'")
+    os.system(f"cd {repo_path} && touch file.txt && git add . && git commit -m 'initial'")
+    os.system(f"cd {repo_path} && git checkout -b task/def45678 && touch new.txt && git add . && git commit -m 'work'")
+    os.system(f"cd {repo_path} && git checkout main && git merge --no-ff task/def45678 -m 'Merge task def45678'")
+
+    mock_db.get_tasks_by_status.return_value = [{
+        "task_id": "def45678",
+        "pid": 999999,
+        "updated_at": datetime.now().isoformat(),
+        "workspace": str(repo_path)
+    }]
+
+    monitor = TaskMonitor(mock_db, check_interval_seconds=1, task_timeout_minutes=30)
+    await monitor._check_stuck_tasks()
+
+    call_args = mock_db.update_task.call_args[1]
+    assert call_args["status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_dead_process_no_git_artifacts_marks_failed(mock_db, tmp_path):
+    """Test dead process without git work marks failed"""
+    repo_path = tmp_path / "test_repo"
+    repo_path.mkdir()
+    os.system(f"cd {repo_path} && git init")
+
+    mock_db.get_tasks_by_status.return_value = [{
+        "task_id": "ghi78901",
+        "pid": 999999,
+        "updated_at": datetime.now().isoformat(),
+        "workspace": str(repo_path)
+    }]
+
+    monitor = TaskMonitor(mock_db, check_interval_seconds=1, task_timeout_minutes=30)
+    await monitor._check_stuck_tasks()
+
+    call_args = mock_db.update_task.call_args[1]
+    assert call_args["status"] == "failed"
+    assert "dead_process" in call_args["error"]
