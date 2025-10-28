@@ -252,8 +252,11 @@ class TaskMonitor:
                     indicators['branch_merged'] = True
                     logger.debug(f"Task {task_id}: Branch {branch_name} merged to main")
             else:
-                # Branch doesn't exist - check if merge commit exists in main
-                # Pattern: "Merge task {task_id[:8]}"
+                # Branch doesn't exist - check alternative completion indicators:
+                # 1. Merge commit in main (explicit task merge)
+                # 2. Direct commits to main during task timeframe (agent committed directly)
+
+                # Check for merge commit: "Merge task {task_id[:8]}"
                 result = subprocess.run(
                     ["git", "log", "--oneline", "main", "-10", "--grep", f"Merge task {task_id[:8]}"],
                     cwd=workspace,
@@ -264,6 +267,39 @@ class TaskMonitor:
                 if result.returncode == 0 and result.stdout.strip():
                     indicators['branch_merged'] = True
                     logger.debug(f"Task {task_id}: Found merge commit in main")
+                else:
+                    # Check for direct commits to main during task timeframe
+                    # Get task timestamps from database for time window
+                    created_at = task.get('created_at')
+                    updated_at = task.get('updated_at')
+
+                    if created_at and updated_at:
+                        try:
+                            # Convert ISO timestamps to git format (YYYY-MM-DD HH:MM:SS)
+                            from datetime import datetime
+                            created_dt = datetime.fromisoformat(created_at)
+                            updated_dt = datetime.fromisoformat(updated_at)
+
+                            # Add 1 minute buffer for process death race condition
+                            updated_dt = updated_dt + timedelta(minutes=1)
+
+                            since = created_dt.strftime("%Y-%m-%d %H:%M:%S")
+                            until = updated_dt.strftime("%Y-%m-%d %H:%M:%S")
+
+                            # Check for commits in main during task timeframe
+                            result = subprocess.run(
+                                ["git", "log", "--oneline", "main", "--since", since, "--until", until],
+                                cwd=workspace,
+                                capture_output=True,
+                                text=True,
+                                timeout=5
+                            )
+
+                            if result.returncode == 0 and result.stdout.strip():
+                                indicators['has_commits'] = True
+                                logger.debug(f"Task {task_id}: Found commits in main during task timeframe ({since} to {until})")
+                        except (ValueError, TypeError) as e:
+                            logger.debug(f"Task {task_id}: Could not parse timestamps for commit search: {e}")
 
         except subprocess.TimeoutExpired:
             logger.warning(f"Task {task_id}: Git command timeout during success check")
