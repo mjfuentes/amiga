@@ -12,8 +12,7 @@ import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import toast, { Toaster } from 'react-hot-toast';
-import { Message as MessageType, TodoItem, ToolCall } from '../types';
-import { TodoList } from './TodoList';
+import { Message as MessageType } from '../types';
 import './ChatInterface.css';
 
 interface Task {
