@@ -2959,21 +2959,25 @@ def health_endpoint():
         # Check database connectivity
         try:
             db = task_manager.db
-            db.execute("SELECT 1")
+            db.conn.execute("SELECT 1")
             health_status["services"]["database"] = "ok"
         except Exception as e:
             logger.warning(f"Health check: database unhealthy - {e}")
             health_status["services"]["database"] = "error"
             health_status["status"] = "degraded"
 
-        # Check session pool
+        # Check session pool (optional - only exists in bot context, not monitoring server)
         try:
-            pool_info = session_pool.get_info()
-            health_status["services"]["session_pool"] = {
-                "status": "ok",
-                "active": pool_info["active_sessions"],
-                "available": pool_info["available_sessions"]
-            }
+            if 'session_pool' in globals():
+                pool_info = session_pool.get_info()
+                health_status["services"]["session_pool"] = {
+                    "status": "ok",
+                    "active": pool_info["active_sessions"],
+                    "available": pool_info["available_sessions"]
+                }
+            else:
+                # Monitoring server doesn't use session_pool
+                health_status["services"]["session_pool"] = "n/a"
         except Exception as e:
             logger.warning(f"Health check: session pool unhealthy - {e}")
             health_status["services"]["session_pool"] = "error"
@@ -2981,11 +2985,12 @@ def health_endpoint():
 
         # Check agent pool
         try:
-            pool_stats = agent_pool.get_statistics()
+            pool_stats = agent_pool.get_status()
             health_status["services"]["agent_pool"] = {
                 "status": "ok",
-                "workers": pool_stats["workers"],
-                "active": pool_stats["active_tasks"]
+                "workers": pool_stats["max_agents"],
+                "active": pool_stats["active_tasks"],
+                "queued": pool_stats["queued_tasks"]
             }
         except Exception as e:
             logger.warning(f"Health check: agent pool unhealthy - {e}")

@@ -149,16 +149,31 @@ restart_server() {
     # Unload launchd service if running
     launchctl unload ~/Library/LaunchAgents/com.amiga.monitoring.plist 2>/dev/null || true
 
-    # Gracefully stop existing monitoring server (SIGTERM first)
-    if pgrep -f "python.*monitoring/server.py" >/dev/null 2>&1; then
-        echo "📋 Stopping existing server gracefully..."
-        pkill -TERM -f "python.*monitoring/server.py" 2>/dev/null || true
-        sleep 3
+    # Kill any process on port 3000 first (most reliable method)
+    if lsof -ti:3000 >/dev/null 2>&1; then
+        echo "📋 Killing processes on port 3000..."
+        lsof -ti:3000 | xargs kill -TERM 2>/dev/null || true
+        sleep 2
 
-        # Force kill if still running after graceful attempt
-        if pgrep -f "python.*monitoring/server.py" >/dev/null 2>&1; then
-            echo "⚠️  Force killing remaining processes..."
-            pkill -9 -f "python.*monitoring/server.py" 2>/dev/null || true
+        # Force kill if still running
+        if lsof -ti:3000 >/dev/null 2>&1; then
+            echo "⚠️  Force killing processes on port 3000..."
+            lsof -ti:3000 | xargs kill -9 2>/dev/null || true
+            sleep 1
+        fi
+    fi
+
+    # Also kill by process name (case-insensitive, specific to monitoring)
+    # Pattern: [Pp]ython.*monitoring.*server.py OR [Pp]ython.*server.py in monitoring dir
+    if pgrep -fi "[Pp]ython.*(monitoring|server\.py)" | xargs ps -p 2>/dev/null | grep -q "server.py"; then
+        echo "📋 Stopping any remaining monitoring server processes..."
+        pkill -TERM -fi "[Pp]ython.*(monitoring.*server\.py|server\.py)" 2>/dev/null || true
+        sleep 1
+
+        # Force kill if still running
+        if pgrep -fi "[Pp]ython.*(monitoring|server\.py)" | xargs ps -p 2>/dev/null | grep -q "server.py"; then
+            echo "⚠️  Force killing remaining server processes..."
+            pkill -9 -fi "[Pp]ython.*(monitoring.*server\.py|server\.py)" 2>/dev/null || true
             sleep 1
         fi
     fi
