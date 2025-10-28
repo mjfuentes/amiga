@@ -28,7 +28,14 @@ export const TaskTooltip: React.FC<TaskTooltipProps> = ({
   const [taskDetails, setTaskDetails] = useState<TaskDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+
+  // Get initial position from target
+  const targetRect = targetElement.getBoundingClientRect();
+  const [position, setPosition] = useState<{ top: number; left: number }>({
+    top: targetRect.bottom + 8,
+    left: targetRect.left
+  });
+  const [isPositioned, setIsPositioned] = useState(false);
   const tooltipRef = useRef<HTMLDivElement>(null);
 
   // Fetch task details and tool calls
@@ -61,59 +68,46 @@ export const TaskTooltip: React.FC<TaskTooltipProps> = ({
     fetchTaskData();
   }, [taskId]);
 
-  // Calculate tooltip position using useLayoutEffect for synchronous positioning before paint
+  // Calculate proper position after tooltip is in DOM
   useLayoutEffect(() => {
-    if (!tooltipRef.current || !targetElement) return;
+    if (!tooltipRef.current) return;
 
-    const calculatePosition = () => {
-      const targetRect = targetElement.getBoundingClientRect();
-      const tooltipRect = tooltipRef.current!.getBoundingClientRect();
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
+    const targetRect = targetElement.getBoundingClientRect();
+    const tooltipRect = tooltipRef.current.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
 
-      // Position below the target with 8px gap
-      let top = targetRect.bottom + 8;
-      let left = targetRect.left;
+    // Position below the target with 8px gap
+    let top = targetRect.bottom + 8;
+    let left = targetRect.left;
 
-      // Center tooltip under the task ID if tooltip is wider than the link
-      if (tooltipRect.width > targetRect.width) {
-        left = targetRect.left + (targetRect.width / 2) - (tooltipRect.width / 2);
-      }
+    // Center tooltip under the task ID if tooltip is wider than the link
+    if (tooltipRect.width > targetRect.width) {
+      left = targetRect.left + (targetRect.width / 2) - (tooltipRect.width / 2);
+    }
 
-      // If tooltip goes off right edge, align to right edge of viewport
-      if (left + tooltipRect.width > viewportWidth - 16) {
-        left = viewportWidth - tooltipRect.width - 16;
-      }
+    // If tooltip goes off right edge, align to right edge of viewport
+    if (left + tooltipRect.width > viewportWidth - 16) {
+      left = viewportWidth - tooltipRect.width - 16;
+    }
 
-      // If tooltip goes off left edge, align to left edge of viewport
-      if (left < 16) {
-        left = 16;
-      }
+    // If tooltip goes off left edge, align to left edge of viewport
+    if (left < 16) {
+      left = 16;
+    }
 
-      // If tooltip goes off bottom edge, position above the target
-      if (top + tooltipRect.height > viewportHeight - 16) {
-        top = targetRect.top - tooltipRect.height - 8;
-      }
+    // If tooltip goes off bottom edge, position above the target
+    if (top + tooltipRect.height > viewportHeight - 16) {
+      top = targetRect.top - tooltipRect.height - 8;
+    }
 
-      // If positioning above would go off top edge, position below anyway and let it scroll
-      if (top < 16) {
-        top = targetRect.bottom + 8;
-      }
+    // If positioning above would go off top edge, position below anyway and let it scroll
+    if (top < 16) {
+      top = targetRect.bottom + 8;
+    }
 
-      setPosition({ top, left });
-    };
-
-    // Calculate position immediately (synchronously)
-    calculatePosition();
-
-    // Recalculate on scroll or resize
-    window.addEventListener('scroll', calculatePosition, true);
-    window.addEventListener('resize', calculatePosition);
-
-    return () => {
-      window.removeEventListener('scroll', calculatePosition, true);
-      window.removeEventListener('resize', calculatePosition);
-    };
+    setPosition({ top, left });
+    setIsPositioned(true);
   }, [targetElement, loading]); // Recalculate when content loads
 
   // Close on click outside
@@ -193,8 +187,13 @@ export const TaskTooltip: React.FC<TaskTooltipProps> = ({
   return (
     <div
       ref={tooltipRef}
-      className={`task-tooltip task-tooltip-compact ${!position ? 'task-tooltip-hidden' : ''}`}
-      style={position ? { top: `${position.top}px`, left: `${position.left}px` } : { visibility: 'hidden' }}
+      className="task-tooltip task-tooltip-compact"
+      style={{
+        top: `${position.top}px`,
+        left: `${position.left}px`,
+        opacity: isPositioned ? 1 : 0,
+        transition: isPositioned ? 'opacity 0.15s ease-out' : 'none'
+      }}
     >
       {loading ? (
         <div className="task-tooltip-loading">
