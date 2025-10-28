@@ -65,7 +65,7 @@ function handleHashRouting() {
     // Session IDs are UUIDs like: 10cc6d23-ea6e-5f50-8c4e-0a66c68fe6b5
     const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (uuidPattern.test(idPart)) {
-        showSessionDetail(idPart);
+        showSessionDetail(idPart, referrer);
         // Clear hash to prevent issues with browser back button
         history.replaceState(null, null, ' ');
         return;
@@ -867,7 +867,8 @@ function formatDuration(seconds) {
     }
 }
 
-async function showSessionDetail(sessionId) {
+async function showSessionDetail(sessionId, referrer = null) {
+    currentTaskReferrer = referrer; // Store where user came from
     const modal = document.getElementById('taskModal');
     modal.classList.add('active');
 
