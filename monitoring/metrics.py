@@ -113,6 +113,10 @@ class MetricsAggregator:
 
         tool_usage = []
         for row in cursor.fetchall():
+            # Defensive: ensure row has all 6 expected columns
+            if len(row) < 6:
+                logger.warning(f"Tool usage row has only {len(row)} columns, expected 6: {row}")
+                continue
             tool_usage.append({
                 "tool_name": row[0],
                 "timestamp": row[1],
@@ -339,6 +343,10 @@ class MetricsAggregator:
         )
 
         for row in cursor.fetchall():
+            # Defensive: ensure row has all 2 expected columns
+            if len(row) < 2:
+                logger.warning(f"Task time-series row has only {len(row)} columns, expected 2: {row}")
+                continue
             task_time = datetime.fromisoformat(row[0]).replace(tzinfo=None)
             status = row[1]
             bucket_index = int((task_time - cutoff_time).total_seconds() / (interval_minutes * 60))
@@ -359,6 +367,10 @@ class MetricsAggregator:
         )
 
         for row in cursor.fetchall():
+            # Defensive: ensure row has at least 1 column
+            if len(row) < 1:
+                logger.warning(f"Tool usage time-series row is empty: {row}")
+                continue
             record_time = datetime.fromisoformat(row[0]).replace(tzinfo=None)
             bucket_index = int((record_time - cutoff_time).total_seconds() / (interval_minutes * 60))
             if 0 <= bucket_index < len(buckets):
