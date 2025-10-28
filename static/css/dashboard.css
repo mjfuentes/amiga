@@ -1519,6 +1519,16 @@ h1 {
     margin-bottom: 0;
 }
 
+.todo-number {
+    color: var(--text-secondary);
+    font-weight: 500;
+    margin-right: 0.5rem;
+    min-width: 2ch;
+    display: inline-block;
+    flex-shrink: 0;
+    margin-top: 0.15rem;
+}
+
 .todo-status-icon {
     flex-shrink: 0;
     margin-top: 0.15rem;

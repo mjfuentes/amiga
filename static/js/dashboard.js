@@ -1208,6 +1208,7 @@ function renderPlanningProgress(toolCalls) {
         const statusClass = todo.status;
 
         html += `<div class="todo-item ${statusClass}">`;
+        html += `<span class="todo-number">${index + 1}.</span>`;
         html += `<span class="todo-status-icon ${statusClass}">${statusIcon}</span>`;
         html += `<div class="todo-content">`;
         html += escapeHtml(todo.content);
@@ -1309,33 +1310,40 @@ function renderTerminalToolCall(call, lineNumber) {
         const cmd = parameters.command || previewObj?.command || 'command';
         // Truncate long commands
         const fullCmd = cmd.length > 100 ? cmd.substring(0, 100) + '...' : cmd;
-        
+
         // Parse command to highlight the command name
         const cmdParts = fullCmd.trim().split(/\s+/);
         const cmdName = cmdParts[0] || '';
         const cmdArgs = cmdParts.slice(1).join(' ');
-        
+
         // Determine color based on command type
         let cmdColor = '#e6edf3'; // default white
         const cmdLower = cmdName.toLowerCase();
-        
-        if (cmdLower === 'git') {
-            cmdColor = '#58a6ff'; // blue for git
-        } else if (cmdLower === 'ls' || cmdLower === 'cd' || cmdLower === 'pwd' || cmdLower === 'mkdir' || cmdLower === 'rm' || cmdLower === 'cp' || cmdLower === 'mv') {
-            cmdColor = '#a0713c'; // brown for file system commands
-        } else if (cmdLower === 'npm' || cmdLower === 'yarn' || cmdLower === 'pnpm' || cmdLower === 'pip' || cmdLower === 'poetry') {
-            cmdColor = '#d29922'; // yellow for package managers
-        } else if (cmdLower === 'python' || cmdLower === 'node' || cmdLower === 'ruby' || cmdLower === 'go' || cmdLower === 'java') {
-            cmdColor = '#3fb950'; // green for interpreters/runtimes
-        } else if (cmdLower === 'docker' || cmdLower === 'kubectl' || cmdLower === 'terraform') {
-            cmdColor = '#bc8cff'; // purple for devops tools
-        } else if (cmdLower === 'echo' || cmdLower === 'cat' || cmdLower === 'grep' || cmdLower === 'sed' || cmdLower === 'awk' || cmdLower === 'find') {
-            cmdColor = '#d29922'; // yellow for text processing
-        }
-        
-        summaryText = `<span style="color: #6e7681;">Ran</span> <span style="color: ${cmdColor};">${escapeHtml(cmdName)}</span>`;
-        if (cmdArgs) {
-            summaryText += ` ${escapeHtml(cmdArgs)}`;
+
+        // Special case: check if command contains "git commit"
+        if (cmdLower === 'git' && fullCmd.toLowerCase().includes('git commit')) {
+            // Show only "git commit" in green, nothing else
+            summaryText = `<span style="color: #3fb950;">git commit</span>`;
+        } else {
+            // Regular command highlighting
+            if (cmdLower === 'git') {
+                cmdColor = '#58a6ff'; // blue for git
+            } else if (cmdLower === 'ls' || cmdLower === 'cd' || cmdLower === 'pwd' || cmdLower === 'mkdir' || cmdLower === 'rm' || cmdLower === 'cp' || cmdLower === 'mv') {
+                cmdColor = '#a0713c'; // brown for file system commands
+            } else if (cmdLower === 'npm' || cmdLower === 'yarn' || cmdLower === 'pnpm' || cmdLower === 'pip' || cmdLower === 'poetry') {
+                cmdColor = '#d29922'; // yellow for package managers
+            } else if (cmdLower === 'python' || cmdLower === 'node' || cmdLower === 'ruby' || cmdLower === 'go' || cmdLower === 'java') {
+                cmdColor = '#3fb950'; // green for interpreters/runtimes
+            } else if (cmdLower === 'docker' || cmdLower === 'kubectl' || cmdLower === 'terraform') {
+                cmdColor = '#bc8cff'; // purple for devops tools
+            } else if (cmdLower === 'echo' || cmdLower === 'cat' || cmdLower === 'grep' || cmdLower === 'sed' || cmdLower === 'awk' || cmdLower === 'find') {
+                cmdColor = '#d29922'; // yellow for text processing
+            }
+
+            summaryText = `<span style="color: #6e7681;">Ran</span> <span style="color: ${cmdColor};">${escapeHtml(cmdName)}</span>`;
+            if (cmdArgs) {
+                summaryText += ` ${escapeHtml(cmdArgs)}`;
+            }
         }
     } else if (tool === 'Read') {
         const filePath = parameters.file_path || previewObj?.filePath || previewObj?.file?.filePath || 'file';
