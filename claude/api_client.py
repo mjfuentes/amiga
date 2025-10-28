@@ -200,12 +200,12 @@ async def ask_claude(
 
     # Optimize context: Sanitize and truncate conversation history
     safe_history = []
-    for msg in conversation_history[-10:]:  # Last 10 messages for better context retention
+    for msg in conversation_history[-20:]:  # Last 20 messages for comprehensive context retention
         safe_msg = {}
         for key, value in msg.items():
             if isinstance(value, str):
                 # Truncate very long messages to save tokens
-                truncated = value[:2000] if len(value) > 2000 else value
+                truncated = value[:5000] if len(value) > 5000 else value
                 safe_msg[key] = sanitize_xml_content(truncated)
             else:
                 safe_msg[key] = value
@@ -348,8 +348,13 @@ Rules:
 • context_summary = comprehensive summary of everything you know about this task (user's original message, conversation context, relevant details, what they're trying to accomplish, any constraints or preferences mentioned)
 
 Context Summary Guidelines:
-• Include the user's ORIGINAL message verbatim (quoted)
-• Include relevant conversation context (what was discussed before)
+• CRITICAL: Include the user's ORIGINAL message verbatim (in quotes)
+• CRITICAL: When user references previous messages ("only first", "the one we discussed", "what I mentioned", pronouns like "it", "that", etc.):
+  - Review conversation_history in context JSON above
+  - Identify what they're referring to from earlier exchanges
+  - Include that information explicitly in context_summary
+  - Example: User says "only first" → Look back to see what "first" refers to → Include: "User previously discussed [X and Y]. Now wants only [X]."
+• Include all relevant conversation context (prior exchanges, references, clarifications)
 • Mention specific files/paths/repos if discussed
 • Note any constraints explicitly mentioned by user (time, scope, preferences)
 • State the working directory/repository
