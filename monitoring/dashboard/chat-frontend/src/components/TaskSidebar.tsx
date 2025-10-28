@@ -185,6 +185,10 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
     }
   });
 
+  // Calculate counts from full task list (not filtered)
+  const activeCount = tasks.filter(t => t.status === 'running' || t.status === 'pending').length;
+  const completedCount = tasks.filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'stopped').length;
+
   return (
     <div className="task-sidebar">
       <div className="sidebar-header">
@@ -199,13 +203,13 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
           className={`filter-button ${filter === 'active' ? 'active' : ''}`}
           onClick={() => setFilter('active')}
         >
-          Active ({tasks.filter(t => t.status === 'running' || t.status === 'pending').length})
+          Active ({activeCount})
         </button>
         <button
           className={`filter-button ${filter === 'completed' ? 'active' : ''}`}
           onClick={() => setFilter('completed')}
         >
-          Completed ({tasks.filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'stopped').length})
+          Completed ({completedCount})
         </button>
       </div>
 
