@@ -257,15 +257,7 @@
 /* Responsive */
 @media (max-width: 768px) {
   .task-sidebar {
-    width: 240px;
-  }
-
-  .sidebar-header h3 {
-    font-size: 0.8125rem;
-  }
-
-  .task-item {
-    padding: 0.75rem;
+    display: none;
   }
 }
 
