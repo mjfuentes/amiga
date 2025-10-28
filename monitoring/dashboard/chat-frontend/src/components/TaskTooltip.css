@@ -12,6 +12,13 @@
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
+/* Compact variant */
+.task-tooltip-compact {
+  max-width: 200px;
+  min-width: 160px;
+  padding: 8px;
+}
+
 @keyframes tooltipFadeIn {
   from {
     opacity: 0;
@@ -28,10 +35,16 @@
 .task-tooltip-error {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 12px;
   padding: 16px;
   color: #d0d0d0;
   font-size: 0.875rem;
+}
+
+.task-tooltip-compact .task-tooltip-loading {
+  padding: 8px;
+  gap: 0;
 }
 
 .loading-spinner {
@@ -61,7 +74,11 @@
 .task-tooltip-content {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 6px;
+}
+
+.task-tooltip-compact .task-tooltip-content {
+  gap: 6px;
 }
 
 .task-tooltip-header {
@@ -115,6 +132,14 @@
   text-transform: capitalize;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+.task-tooltip-compact .task-status-badge {
+  padding: 3px 8px;
+  font-size: 0.6875rem;
+  gap: 4px;
+  width: 100%;
+  justify-content: center;
 }
 
 .status-icon {
@@ -286,6 +311,15 @@
   border-radius: 0 0 8px 8px;
 }
 
+.task-tooltip-compact .task-tooltip-actions {
+  flex-direction: column;
+  gap: 4px;
+  padding: 0;
+  border-top: none;
+  background: transparent;
+  border-radius: 0;
+}
+
 .tooltip-button {
   display: flex;
   align-items: center;
@@ -302,6 +336,13 @@
   flex: 1;
   justify-content: center;
   white-space: nowrap;
+}
+
+.task-tooltip-compact .tooltip-button {
+  padding: 6px 8px;
+  font-size: 0.75rem;
+  gap: 4px;
+  border-radius: 4px;
 }
 
 .tooltip-button:hover {
