@@ -693,7 +693,7 @@
   font-size: 0.625rem !important;
 }
 
-/* Message input wrapper - positions command suggestions and console error button */
+/* Message input wrapper - positions command suggestions */
 .message-input-wrapper {
   position: relative !important;
   flex: 0 0 auto !important;
@@ -701,7 +701,13 @@
   width: 100% !important;
 }
 
-/* Console error button - minimal and unobtrusive */
+/* Message input container - wraps MessageInput and console error button */
+.message-input-container {
+  position: relative;
+  width: 100%;
+}
+
+/* Console error button - minimal and unobtrusive, inside MessageInput */
 .console-error-button {
   position: absolute;
   top: 50%;
@@ -749,7 +755,7 @@
 }
 
 /* Adjust message input right padding when error button is visible */
-.message-input-wrapper:has(.console-error-button) .cs-message-input__content-editor-wrapper {
+.message-input-container:has(.console-error-button) .cs-message-input__content-editor-wrapper {
   padding-right: 80px;
 }
 
@@ -770,7 +776,7 @@
     font-size: 0.6875rem;
   }
 
-  .message-input-wrapper:has(.console-error-button) .cs-message-input__content-editor-wrapper {
+  .message-input-container:has(.console-error-button) .cs-message-input__content-editor-wrapper {
     padding-right: 70px;
   }
 }

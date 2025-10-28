@@ -862,40 +862,42 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               ))}
             </div>
           )}
-          {hasErrors && (
-            <button
-              className="console-error-button"
-              onClick={handleConsoleErrorClick}
-              title={`${errorCount} console error${errorCount !== 1 ? 's' : ''} detected - click to copy`}
-              aria-label={`Copy ${errorCount} console errors`}
-            >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                <path
-                  d="M8 1C4.13401 1 1 4.13401 1 8C1 11.866 4.13401 15 8 15C11.866 15 15 11.866 15 8C15 4.13401 11.866 1 8 1ZM8 13.5C4.96243 13.5 2.5 11.0376 2.5 8C2.5 4.96243 4.96243 2.5 8 2.5C11.0376 2.5 13.5 4.96243 13.5 8C13.5 11.0376 11.0376 13.5 8 13.5Z"
-                  fill="currentColor"
-                />
-                <path
-                  d="M8 4C7.58579 4 7.25 4.33579 7.25 4.75V8.25C7.25 8.66421 7.58579 9 8 9C8.41421 9 8.75 8.66421 8.75 8.25V4.75C8.75 4.33579 8.41421 4 8 4Z"
-                  fill="currentColor"
-                />
-                <path
-                  d="M8 10.5C7.58579 10.5 7.25 10.8358 7.25 11.25C7.25 11.6642 7.58579 12 8 12C8.41421 12 8.75 11.6642 8.75 11.25C8.75 10.8358 8.41421 10.5 8 10.5Z"
-                  fill="currentColor"
-                />
-              </svg>
-              <span className="error-count">{errorCount}</span>
-            </button>
-          )}
-          <MessageInput
-            key={`chat-input-${connected}-${messages.length}`}
-            placeholder="Type your message... (type / for commands)"
-            value={inputValue}
-            onChange={(val) => handleInputChange(val)}
-            onSend={handleSend}
-            disabled={!connected}
-            attachButton={false}
-            aria-label="Message input"
-          />
+          <div className="message-input-container">
+            {hasErrors && (
+              <button
+                className="console-error-button"
+                onClick={handleConsoleErrorClick}
+                title={`${errorCount} console error${errorCount !== 1 ? 's' : ''} detected - click to copy`}
+                aria-label={`Copy ${errorCount} console errors`}
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M8 1C4.13401 1 1 4.13401 1 8C1 11.866 4.13401 15 8 15C11.866 15 15 11.866 15 8C15 4.13401 11.866 1 8 1ZM8 13.5C4.96243 13.5 2.5 11.0376 2.5 8C2.5 4.96243 4.96243 2.5 8 2.5C11.0376 2.5 13.5 4.96243 13.5 8C13.5 11.0376 11.0376 13.5 8 13.5Z"
+                    fill="currentColor"
+                  />
+                  <path
+                    d="M8 4C7.58579 4 7.25 4.33579 7.25 4.75V8.25C7.25 8.66421 7.58579 9 8 9C8.41421 9 8.75 8.66421 8.75 8.25V4.75C8.75 4.33579 8.41421 4 8 4Z"
+                    fill="currentColor"
+                  />
+                  <path
+                    d="M8 10.5C7.58579 10.5 7.25 10.8358 7.25 11.25C7.25 11.6642 7.58579 12 8 12C8.41421 12 8.75 11.6642 8.75 11.25C8.75 10.8358 8.41421 10.5 8 10.5Z"
+                    fill="currentColor"
+                  />
+                </svg>
+                <span className="error-count">{errorCount}</span>
+              </button>
+            )}
+            <MessageInput
+              key={`chat-input-${connected}-${messages.length}`}
+              placeholder="Type your message... (type / for commands)"
+              value={inputValue}
+              onChange={(val) => handleInputChange(val)}
+              onSend={handleSend}
+              disabled={!connected}
+              attachButton={false}
+              aria-label="Message input"
+            />
+          </div>
         </div>
       </MainContainer>
 
