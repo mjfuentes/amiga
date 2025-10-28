@@ -14,6 +14,7 @@ import asyncio  # noqa: E402
 import json  # noqa: E402
 import logging  # noqa: E402
 import os  # noqa: E402
+import signal  # noqa: E402
 import time  # noqa: E402
 import uuid  # noqa: E402
 from collections.abc import Generator  # noqa: E402
@@ -153,6 +154,7 @@ app = Flask(__name__, template_folder="../templates", static_folder="../static",
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 app.config["SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "dev-secret-change-in-prod-IMPORTANT")
+app.config["START_TIME"] = time.time()  # For health check uptime calculation
 
 # CORS configuration
 allowed_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3001").split(",")
@@ -2917,26 +2919,75 @@ def session_screenshots(session_id: str):
 
 @app.route("/health")
 def health_endpoint():
-    """Simple health check endpoint (no /api prefix)"""
-    return jsonify(
-        {
+    """
+    Comprehensive health check endpoint for monitoring and load balancers.
+    Returns 200 if server is healthy, 503 if unhealthy.
+    """
+    try:
+        health_status = {
             "status": "healthy",
             "service": "AMIGA (Autonomous Modular Interactive Graphical Agent)-monitoring",
             "version": "1.0.0",
+            "timestamp": datetime.now().isoformat(),
+            "uptime_seconds": int(time.time() - app.config.get("START_TIME", time.time())),
+            "services": {}
         }
-    )
+
+        # Check database connectivity
+        try:
+            db = task_manager.db
+            db.execute("SELECT 1")
+            health_status["services"]["database"] = "ok"
+        except Exception as e:
+            logger.warning(f"Health check: database unhealthy - {e}")
+            health_status["services"]["database"] = "error"
+            health_status["status"] = "degraded"
+
+        # Check session pool
+        try:
+            pool_info = session_pool.get_info()
+            health_status["services"]["session_pool"] = {
+                "status": "ok",
+                "active": pool_info["active_sessions"],
+                "available": pool_info["available_sessions"]
+            }
+        except Exception as e:
+            logger.warning(f"Health check: session pool unhealthy - {e}")
+            health_status["services"]["session_pool"] = "error"
+            health_status["status"] = "degraded"
+
+        # Check agent pool
+        try:
+            pool_stats = agent_pool.get_statistics()
+            health_status["services"]["agent_pool"] = {
+                "status": "ok",
+                "workers": pool_stats["workers"],
+                "active": pool_stats["active_tasks"]
+            }
+        except Exception as e:
+            logger.warning(f"Health check: agent pool unhealthy - {e}")
+            health_status["services"]["agent_pool"] = "error"
+            health_status["status"] = "degraded"
+
+        # Determine HTTP status code
+        status_code = 200 if health_status["status"] in ("healthy", "degraded") else 503
+
+        return jsonify(health_status), status_code
+
+    except Exception as e:
+        logger.error(f"Health check failed: {e}", exc_info=True)
+        return jsonify({
+            "status": "unhealthy",
+            "service": "AMIGA (Autonomous Modular Interactive Graphical Agent)-monitoring",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 503
 
 
 @app.route("/api/health")
-def health_check():
-    """Health check endpoint"""
-    return jsonify(
-        {
-            "status": "healthy",
-            "service": "AMIGA (Autonomous Modular Interactive Graphical Agent)-monitoring",
-            "version": "1.0.0",
-        }
-    )
+def health_check_api():
+    """Health check endpoint (alias for /health with /api prefix)"""
+    return health_endpoint()
 
 
 # --- SSE Stream ---
@@ -3170,6 +3221,39 @@ def stream_metrics():
             "Connection": "keep-alive",
         },
     )
+
+
+def setup_graceful_shutdown():
+    """
+    Setup signal handlers for graceful shutdown.
+    Handles SIGTERM and SIGINT for clean server termination.
+    """
+    def shutdown_handler(signum, frame):
+        """Handle shutdown signals gracefully"""
+        sig_name = "SIGTERM" if signum == signal.SIGTERM else "SIGINT"
+        logger.info(f"Received {sig_name}, initiating graceful shutdown...")
+
+        # Shutdown agent pool
+        if _agent_pool_loop:
+            logger.info("Stopping agent pool...")
+            asyncio.run_coroutine_threadsafe(agent_pool.stop(), _agent_pool_loop)
+            _agent_pool_loop.call_soon_threadsafe(_agent_pool_loop.stop)
+
+        # Shutdown task monitor
+        if _agent_pool_loop:
+            logger.info("Stopping task monitor...")
+            asyncio.run_coroutine_threadsafe(task_monitor.stop(), _agent_pool_loop)
+
+        # Close database
+        logger.info("Closing database connection...")
+        close_database()
+
+        logger.info("Graceful shutdown complete")
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, shutdown_handler)
+    signal.signal(signal.SIGINT, shutdown_handler)
+    logger.info("Graceful shutdown handlers registered for SIGTERM and SIGINT")
 
 
 def run_server(host: str = "0.0.0.0", port: int = 3000, debug: bool = False):  # nosec B104
@@ -3418,6 +3502,9 @@ if __name__ == "__main__":
     port = int(os.getenv("MONITORING_PORT", "3000"))
     debug = os.getenv("MONITORING_DEBUG", "false").lower() == "true"
     auto_restart = os.getenv("MONITORING_AUTO_RESTART", "true").lower() == "true"
+
+    # Setup graceful shutdown handlers
+    setup_graceful_shutdown()
 
     # Check if we should enable auto-restart
     if auto_restart:

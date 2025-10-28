@@ -106,6 +106,40 @@ deploy_dashboard() {
     fi
 }
 
+wait_for_port_free() {
+    local port=$1
+    local max_wait=10
+    local waited=0
+
+    # Check if port is in use
+    if ! lsof -ti:$port >/dev/null 2>&1; then
+        # Port is already free
+        return 0
+    fi
+
+    # Port is in use, wait for it to be released
+    while lsof -ti:$port >/dev/null 2>&1; do
+        if [ $waited -ge $max_wait ]; then
+            echo "⚠️  Port $port still in use after ${max_wait}s"
+            # Force kill any remaining process on port
+            echo "🔨 Force killing process on port $port..."
+            lsof -ti:$port | xargs kill -9 2>/dev/null || true
+            sleep 1
+
+            # Final check
+            if lsof -ti:$port >/dev/null 2>&1; then
+                echo "❌ Failed to free port $port"
+                return 1
+            fi
+            return 0
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+
+    return 0
+}
+
 restart_server() {
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -115,9 +149,27 @@ restart_server() {
     # Unload launchd service if running
     launchctl unload ~/Library/LaunchAgents/com.amiga.monitoring.plist 2>/dev/null || true
 
-    # Kill existing monitoring server
-    pkill -9 -f "python.*monitoring/server.py" 2>/dev/null || true
-    sleep 2
+    # Gracefully stop existing monitoring server (SIGTERM first)
+    if pgrep -f "python.*monitoring/server.py" >/dev/null 2>&1; then
+        echo "📋 Stopping existing server gracefully..."
+        pkill -TERM -f "python.*monitoring/server.py" 2>/dev/null || true
+        sleep 3
+
+        # Force kill if still running after graceful attempt
+        if pgrep -f "python.*monitoring/server.py" >/dev/null 2>&1; then
+            echo "⚠️  Force killing remaining processes..."
+            pkill -9 -f "python.*monitoring/server.py" 2>/dev/null || true
+            sleep 1
+        fi
+    fi
+
+    # Wait for port 3000 to be released
+    echo "🔍 Waiting for port 3000 to be free..."
+    wait_for_port_free 3000 || {
+        echo "❌ Failed to free port 3000"
+        exit 1
+    }
+    echo "✅ Port 3000 is available"
 
     # Use venv python and set PYTHONPATH
     PYTHON="$SCRIPT_DIR/venv/bin/python"
@@ -128,15 +180,29 @@ restart_server() {
     nohup "$PYTHON" server.py > ../logs/monitoring.log 2>&1 &
     MONITOR_PID=$!
     cd "$SCRIPT_DIR"
-    sleep 3
 
-    # Verify monitoring server
-    if curl -s http://localhost:3000 > /dev/null 2>&1; then
-        echo "✅ Monitoring server started (PID: $MONITOR_PID)"
-    else
-        echo "❌ Failed to start monitoring server"
-        exit 1
-    fi
+    # Wait for server to be healthy (check health endpoint)
+    echo "🔍 Waiting for server to be healthy..."
+    max_wait=10
+    waited=0
+    while [ $waited -lt $max_wait ]; do
+        health_response=$(curl -s -w "%{http_code}" -o /dev/null http://localhost:3000/health 2>/dev/null || echo "000")
+
+        if [ "$health_response" = "200" ]; then
+            echo "✅ Monitoring server started and healthy (PID: $MONITOR_PID)"
+            break
+        fi
+
+        sleep 1
+        waited=$((waited + 1))
+
+        if [ $waited -eq $max_wait ]; then
+            echo "❌ Server failed to become healthy within ${max_wait}s"
+            echo "📋 Last 20 lines of logs:"
+            tail -20 logs/monitoring.log
+            exit 1
+        fi
+    done
 
     echo ""
     echo "🌐 Access points:"
