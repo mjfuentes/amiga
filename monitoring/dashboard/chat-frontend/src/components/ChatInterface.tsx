@@ -12,8 +12,7 @@ import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import toast, { Toaster } from 'react-hot-toast';
-import { Message as MessageType, TodoItem, ToolCall } from '../types';
-import { TodoList } from './TodoList';
+import { Message as MessageType } from '../types';
 import './ChatInterface.css';
 
 interface Task {
@@ -28,6 +27,7 @@ interface ChatInterfaceProps {
   onClearChat: () => Promise<boolean>;
   onLogout: () => void;
   chatViewActive: boolean;
+  onTaskClick: (taskId: string) => void;
   setChatViewActive: (active: boolean) => void;
 }
 
@@ -48,6 +48,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onClearChat,
   onLogout,
   chatViewActive,
+  onTaskClick,
   setChatViewActive,
 }) => {
   const [inputValue, setInputValue] = useState('');
@@ -63,6 +64,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const handleSendRef = useRef<((message: string) => Promise<void>) | null>(null);
   const lastUserMessageRef = useRef<HTMLDivElement | null>(null);
   const cursorPositionRef = useRef<number | null>(null);
+  // Modal state now managed by App component
 
   // Helper function to focus the input
   const focusInput = () => {
@@ -334,7 +336,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           onClick={(e) => {
             e.preventDefault();
             // Navigate to monitoring dashboard with task highlighted
-            window.location.href = `/dashboard#${urlTaskId}?ref=chat`;
+            onTaskClick(taskId);
           }}
           title={`View task ${taskId} in monitoring dashboard${status ? ` (${status})` : ''}`}
         >
@@ -640,7 +642,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                                       data-status={status || 'running'}
                                       onClick={(e) => {
                                         e.preventDefault();
-                                        window.location.href = `/dashboard#${urlTaskId}?ref=chat`;
+                                        onTaskClick(taskId);
                                       }}
                                       title={`View task ${taskId} in monitoring dashboard${status ? ` (${status})` : ''}`}
                                       {...props}

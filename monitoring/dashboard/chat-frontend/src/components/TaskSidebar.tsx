@@ -24,10 +24,11 @@ interface ToolUsage {
 }
 
 interface TaskSidebarProps {
+  onTaskClick: (taskId: string) => void;
   visible: boolean;
 }
 
-export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
+export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible, onTaskClick }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [connected, setConnected] = useState(false);
   const [filter, setFilter] = useState<'active' | 'completed'>('active');
@@ -171,7 +172,7 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
 
   const handleTaskClick = (taskId: string) => {
     // Navigate to monitoring dashboard with task highlighted and referrer info
-    window.location.href = `/dashboard#${taskId}?ref=chat`;
+    onTaskClick(taskId);
   };
 
   const handleMarkFixed = async (taskId: string, event: React.MouseEvent) => {
