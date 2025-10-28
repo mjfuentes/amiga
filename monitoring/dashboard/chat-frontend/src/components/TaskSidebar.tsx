@@ -27,6 +27,19 @@ interface TaskSidebarProps {
   visible: boolean;
 }
 
+/**
+ * TaskSidebar Component
+ * =====================
+ *
+ * Displays active and completed background tasks with real-time tool usage.
+ *
+ * VISIBILITY BEHAVIOR (Progressive Reveal Pattern):
+ * - Hidden on landing page (home screen with centered input)
+ * - Appears when user types anything into input box (chatViewActive=true)
+ * - Controlled by App.tsx via `visible` prop
+ *
+ * See docs/CHAT_INTERFACE_UX.md for complete navigation pattern documentation.
+ */
 export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [connected, setConnected] = useState(false);

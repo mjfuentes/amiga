@@ -12,7 +12,25 @@ function App() {
   const { connected, messages, sendMessage, clearChat } = useSocket(token);
   const [chatViewActive, setChatViewActive] = useState(false);
 
-  // Show sidebar when chat view is active or messages exist
+  /**
+   * SIDEBAR VISIBILITY CONTROL (Navigation Pattern)
+   * ===============================================
+   *
+   * Sidebars (TaskSidebar and SessionsSidebar) are HIDDEN on the landing page
+   * and SHOWN when the user begins interacting with the chat.
+   *
+   * Visibility conditions:
+   * 1. chatViewActive: User typed anything into input (triggers chat view)
+   * 2. messages.length > 0: User sent at least one message
+   *
+   * UX Flow:
+   * - Landing page (home screen): Clean, centered input with AMIGA logo, NO sidebars
+   * - User types anything → chatViewActive becomes true → sidebars appear
+   * - After /clear: Returns to landing page (chatViewActive=false, messages=[])
+   *
+   * This creates an intentional "reveal" pattern where the full interface appears
+   * only after the user engages with the input.
+   */
   const showSidebar = chatViewActive || messages.length > 0;
 
   if (loading) {

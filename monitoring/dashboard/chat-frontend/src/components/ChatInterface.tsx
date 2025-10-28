@@ -449,6 +449,19 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   };
 
   const handleSend = useCallback(async (message: string) => {
+    /**
+     * NAVIGATION TRIGGER: Landing → Chat View
+     * ========================================
+     *
+     * This handles the transition from the landing page to the full chat interface.
+     *
+     * Behavior:
+     * - Empty Enter on landing: Activates chat view (shows sidebars) without sending
+     * - Any text + Enter: Sends message AND activates chat view
+     *
+     * This ensures the sidebars appear as soon as the user engages with input,
+     * creating a smooth reveal effect from the clean landing page to full UI.
+     */
     // Handle empty Enter press on landing page - activate chat view without sending message
     if (!message.trim() && messages.length === 0) {
       setChatViewActive(true);
@@ -571,6 +584,24 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     });
   };
 
+  /**
+   * LANDING PAGE RENDERING
+   * ======================
+   *
+   * Shows clean landing view when:
+   * - No messages have been sent (messages.length === 0)
+   * - Chat view not activated (chatViewActive === false)
+   *
+   * Landing UI features:
+   * - Centered AMIGA logo (clickable → dashboard)
+   * - Large input box with command autocomplete
+   * - NO sidebars (TaskSidebar and SessionsSidebar hidden via App.tsx showSidebar)
+   *
+   * Transition trigger:
+   * - User types anything → handleSend activates chatViewActive
+   * - Sidebars appear (controlled by App.tsx)
+   * - Layout changes from centered to full chat interface
+   */
   // Show landing page when no messages and chat view not active
   if (messages.length === 0 && !chatViewActive) {
     return (
