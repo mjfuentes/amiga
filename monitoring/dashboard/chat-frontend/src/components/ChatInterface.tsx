@@ -234,14 +234,23 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     const connectSSE = () => {
       try {
         eventSource = new EventSource('/api/stream/metrics?hours=24');
+        
+        eventSource.onopen = () => {
+          console.log('ChatInterface SSE connection established');
+        };
 
         eventSource.onmessage = (event) => {
           try {
+            // Skip empty or heartbeat messages
+            if (!event.data || event.data.trim() === '' || event.data.trim() === ': heartbeat') {
+              return;
+            }
+            
             const data = JSON.parse(event.data);
             const tasks = data?.overview?.task_statistics?.recent_24h?.tasks;
             if (tasks && Array.isArray(tasks)) {
               const statusMap = new Map<string, string>();
-              tasks.forEach((task: Task) => {
+              tasks.forEach((task: any) => {
                 statusMap.set(task.task_id, task.status);
               });
               setTaskStatusMap(statusMap);
@@ -251,7 +260,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           }
         };
 
-        eventSource.onerror = () => {
+        eventSource.onerror = (error) => {
+          console.error('ChatInterface SSE error:', error);
+          console.error('EventSource readyState:', eventSource?.readyState);
           eventSource?.close();
           // Retry connection after 5 seconds
           setTimeout(connectSSE, 5000);

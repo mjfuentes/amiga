@@ -61,6 +61,11 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
 
         eventSource.onmessage = (event) => {
           try {
+            // Skip empty or heartbeat messages
+            if (!event.data || event.data.trim() === '' || event.data.trim() === ': heartbeat') {
+              return;
+            }
+            
             const data = JSON.parse(event.data);
             // SSE sends: { overview: { task_statistics: { recent_24h: { tasks: [...] } } } }
             const allTasks = data?.overview?.task_statistics?.recent_24h?.tasks;
@@ -74,6 +79,7 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
 
         eventSource.onerror = (error) => {
           console.error('SSE connection error:', error);
+          console.error('EventSource readyState:', eventSource?.readyState);
           setConnected(false);
           eventSource?.close();
 
