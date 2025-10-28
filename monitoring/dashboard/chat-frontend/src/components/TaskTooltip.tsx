@@ -70,12 +70,39 @@ export const TaskTooltip: React.FC<TaskTooltipProps> = ({
 
   // Calculate proper position after tooltip is in DOM
   useLayoutEffect(() => {
-    if (!tooltipRef.current) return;
+    if (!tooltipRef.current) {
+      console.debug('[TaskTooltip] tooltipRef not ready yet');
+      return;
+    }
 
     const targetRect = targetElement.getBoundingClientRect();
     const tooltipRect = tooltipRef.current.getBoundingClientRect();
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
+
+    console.debug('[TaskTooltip] Positioning tooltip:', {
+      taskId,
+      targetRect: {
+        top: targetRect.top,
+        left: targetRect.left,
+        bottom: targetRect.bottom,
+        right: targetRect.right,
+        width: targetRect.width,
+        height: targetRect.height
+      },
+      tooltipRect: {
+        width: tooltipRect.width,
+        height: tooltipRect.height
+      },
+      viewport: {
+        width: viewportWidth,
+        height: viewportHeight
+      },
+      scrollPosition: {
+        x: window.scrollX,
+        y: window.scrollY
+      }
+    });
 
     // Position below the target with 8px gap
     let top = targetRect.bottom + 8;
@@ -106,9 +133,20 @@ export const TaskTooltip: React.FC<TaskTooltipProps> = ({
       top = targetRect.bottom + 8;
     }
 
+    console.debug('[TaskTooltip] Final position:', { top, left });
+
     setPosition({ top, left });
     setIsPositioned(true);
-  }, [targetElement, loading]); // Recalculate when content loads
+
+    // Add debugging data attribute to tooltip for manual inspection
+    if (tooltipRef.current) {
+      tooltipRef.current.setAttribute('data-debug-position', JSON.stringify({ 
+        top, 
+        left,
+        targetRect: { top: targetRect.top, left: targetRect.left, bottom: targetRect.bottom, right: targetRect.right }
+      }));
+    }
+  }, [targetElement, loading, taskId]); // Recalculate when content loads
 
   // Close on click outside
   useEffect(() => {
@@ -188,11 +226,13 @@ export const TaskTooltip: React.FC<TaskTooltipProps> = ({
     <div
       ref={tooltipRef}
       className="task-tooltip task-tooltip-compact"
+      data-task-id={taskId}
       style={{
         top: `${position.top}px`,
         left: `${position.left}px`,
         opacity: isPositioned ? 1 : 0,
-        transition: isPositioned ? 'opacity 0.15s ease-out' : 'none'
+        transition: isPositioned ? 'opacity 0.15s ease-out' : 'none',
+        visibility: isPositioned ? 'visible' : 'hidden' // Prevent interaction before positioned
       }}
     >
       {loading ? (
@@ -247,5 +287,18 @@ export const TaskTooltip: React.FC<TaskTooltipProps> = ({
 
   // Render tooltip using a portal to document.body
   // This ensures position:fixed works correctly relative to viewport
+  // DEBUGGING: Check if portal is working
+  useEffect(() => {
+    if (tooltipRef.current) {
+      console.debug('[TaskTooltip] Portal check:', {
+        tooltipParent: tooltipRef.current.parentElement?.tagName,
+        isInBody: tooltipRef.current.parentElement === document.body,
+        computedPosition: window.getComputedStyle(tooltipRef.current).position,
+        computedZIndex: window.getComputedStyle(tooltipRef.current).zIndex,
+        boundingRect: tooltipRef.current.getBoundingClientRect()
+      });
+    }
+  }, [isPositioned]);
+
   return ReactDOM.createPortal(tooltipContent, document.body);
 };
