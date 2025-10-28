@@ -89,34 +89,47 @@ export const TaskTooltip: React.FC<TaskTooltipProps> = ({
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
 
-      // Try to position below the target
+      // Position below the target with 8px gap
       let top = targetRect.bottom + 8;
       let left = targetRect.left;
 
-      // If tooltip goes off right edge, align to right
+      // Center tooltip under the task ID if tooltip is wider than the link
+      if (tooltipRect.width > targetRect.width) {
+        left = targetRect.left + (targetRect.width / 2) - (tooltipRect.width / 2);
+      }
+
+      // If tooltip goes off right edge, align to right edge of viewport
       if (left + tooltipRect.width > viewportWidth - 16) {
         left = viewportWidth - tooltipRect.width - 16;
       }
 
-      // If tooltip goes off bottom edge, position above
+      // If tooltip goes off left edge, align to left edge of viewport
+      if (left < 16) {
+        left = 16;
+      }
+
+      // If tooltip goes off bottom edge, position above the target
       if (top + tooltipRect.height > viewportHeight - 16) {
         top = targetRect.top - tooltipRect.height - 8;
       }
 
-      // Ensure minimum left position
-      left = Math.max(16, left);
+      // If positioning above would go off top edge, position below anyway and let it scroll
+      if (top < 16) {
+        top = targetRect.bottom + 8;
+      }
 
       setPosition({ top, left });
     };
 
-    // Initial calculation
-    calculatePosition();
+    // Initial calculation with slight delay to ensure DOM is ready
+    const initialTimer = setTimeout(calculatePosition, 10);
 
     // Recalculate on scroll or resize
     window.addEventListener('scroll', calculatePosition, true);
     window.addEventListener('resize', calculatePosition);
 
     return () => {
+      clearTimeout(initialTimer);
       window.removeEventListener('scroll', calculatePosition, true);
       window.removeEventListener('resize', calculatePosition);
     };
