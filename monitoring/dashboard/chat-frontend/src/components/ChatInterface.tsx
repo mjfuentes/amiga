@@ -14,6 +14,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import toast, { Toaster } from 'react-hot-toast';
 import { Message as MessageType } from '../types';
 import { TaskTooltip } from './TaskTooltip';
+import { TaskModal } from './TaskModal';
 import './ChatInterface.css';
 
 interface Task {
@@ -58,6 +59,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [isShuttingDown, setIsShuttingDown] = useState(false);
   const [taskStatusMap, setTaskStatusMap] = useState<Map<string, string>>(new Map());
   const [activeTooltip, setActiveTooltip] = useState<{ taskId: string; element: HTMLElement } | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const lastMessageCountRef = useRef(messages.length);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputListenerAttachedRef = useRef(false);
@@ -343,8 +346,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           data-status={status || 'running'}
           onClick={(e) => {
             e.preventDefault();
-            // Navigate to monitoring dashboard with task highlighted
-            window.location.href = `/dashboard#${urlTaskId}?ref=chat`;
+            // Open task modal instead of navigating
+            setSelectedTaskId(taskId);
+            setIsTaskModalOpen(true);
           }}
           onMouseEnter={(e) => {
             const target = e.currentTarget as HTMLElement;
@@ -654,7 +658,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                                       data-status={status || 'running'}
                                       onClick={(e) => {
                                         e.preventDefault();
-                                        window.location.href = `/dashboard#${urlTaskId}?ref=chat`;
+                                        // Open task modal
+                                        setSelectedTaskId(urlTaskId);
+                                        setIsTaskModalOpen(true);
                                       }}
                                       onMouseEnter={(e) => {
                                         const target = e.currentTarget as HTMLElement;
@@ -800,6 +806,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           onClose={() => setActiveTooltip(null)}
         />
       )}
+
+      {/* Task Modal */}
+      <TaskModal
+        taskId={selectedTaskId}
+        isOpen={isTaskModalOpen}
+        onClose={() => {
+          setIsTaskModalOpen(false);
+          setSelectedTaskId(null);
+        }}
+      />
     </div>
   );
 };
