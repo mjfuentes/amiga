@@ -1,7 +1,7 @@
 .task-tooltip {
   position: fixed;
   z-index: 10000;
-  background: #1f1f1f;
+  background: rgba(20, 20, 20, 0.95);
   border: 1px solid #3a3a3a;
   border-radius: 8px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(106, 159, 181, 0.1);
@@ -141,7 +141,7 @@
 }
 
 .task-tooltip-body::-webkit-scrollbar-track {
-  background: #1a1a1a;
+  background: rgba(20, 20, 20, 0.95);
   border-radius: 3px;
 }
 
@@ -256,7 +256,7 @@
 }
 
 .tool-log-container::-webkit-scrollbar-track {
-  background: #0a0a0a;
+  background: rgba(20, 20, 20, 0.95);
   border-radius: 3px;
 }
 
