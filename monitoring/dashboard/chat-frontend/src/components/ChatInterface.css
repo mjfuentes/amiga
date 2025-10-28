@@ -274,8 +274,20 @@
   color: #6a9fb5;
   border-color: #3a3a3a;
   background: rgba(106, 159, 181, 0.1);
-  font-size: 0.5rem; /* Smaller font to fit "You" text */
-  padding: 0 2px; /* Add horizontal padding for text */
+  position: relative;
+}
+
+/* User avatar icon (simple circle) */
+.user-avatar::before {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #6a9fb5;
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
 }
 
 .assistant-avatar {
@@ -994,8 +1006,9 @@
     height: 24px;
   }
 
-  .user-avatar {
-    font-size: 0.5rem;
+  .user-avatar::before {
+    width: 10px;
+    height: 10px;
   }
 
   .assistant-avatar {
