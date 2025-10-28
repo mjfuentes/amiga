@@ -4,6 +4,7 @@ import { useSocket } from './hooks/useSocket';
 import { AuthModal } from './components/AuthModal';
 import { ChatInterface } from './components/ChatInterface';
 import { TaskSidebar } from './components/TaskSidebar';
+import { SessionsSidebar } from './components/SessionsSidebar';
 import './App.css';
 
 function App() {
@@ -39,6 +40,7 @@ function App() {
         chatViewActive={chatViewActive}
         setChatViewActive={setChatViewActive}
       />
+      <SessionsSidebar visible={showSidebar} />
     </div>
   );
 }
