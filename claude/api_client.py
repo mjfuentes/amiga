@@ -611,6 +611,27 @@ current_workspace: {safe_workspace}
         # Direct answer
         return response_text, None, usage_info
 
+    except anthropic.APIError as e:
+        # Parse Anthropic API errors for user-friendly messages
+        logger.error(f"Anthropic API error: {e}", exc_info=True)
+
+        # Extract error details
+        error_type = getattr(e, 'type', None)
+        status_code = getattr(e, 'status_code', None)
+
+        # User-friendly error messages
+        if status_code == 529 or error_type == 'overloaded_error':
+            return "Claude is temporarily overloaded. Please retry in 30-60 seconds.", None, None
+        elif status_code == 429:
+            return "Rate limit reached. Please wait a moment and try again.", None, None
+        elif status_code == 401:
+            return "Authentication failed. Please check API configuration.", None, None
+        elif status_code >= 500:
+            return "Claude service temporarily unavailable. Please try again shortly.", None, None
+        else:
+            # Generic API error
+            return f"Error processing request. Please try again.", None, None
+
     except Exception as e:
-        logger.error(f"Error calling Claude API: {e}", exc_info=True)
-        return f"Error processing request: {str(e)}", None, None
+        logger.error(f"Unexpected error calling Claude API: {e}", exc_info=True)
+        return f"Unexpected error occurred. Please try again.", None, None
