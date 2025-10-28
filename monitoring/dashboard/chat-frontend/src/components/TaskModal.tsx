@@ -507,19 +507,31 @@ export const TaskModal: React.FC<TaskModalProps> = ({ taskId, isOpen, onClose })
                 )}
 
                 {/* Activity Log */}
-                {taskDetails.activity_log && taskDetails.activity_log.length > 0 && (
-                  <section className="task-section">
-                    <h3 className="task-section-title">📝 Activity Log</h3>
-                    <div className="activity-log">
-                      {taskDetails.activity_log.map((entry, index) => (
-                        <div key={index} className={`activity-entry ${entry.level || 'info'}`}>
-                          <span className="activity-time">{formatTimestamp(entry.timestamp)}</span>
-                          <span className="activity-message">{entry.message}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-                )}
+                {taskDetails.activity_log && taskDetails.activity_log.length > 0 && (() => {
+                  // Filter out "Updated planning items" entries as they're redundant with the Planning & Workflow section
+                  const filteredLog = taskDetails.activity_log.filter((entry) => {
+                    const message = entry.message.toLowerCase();
+                    return !message.includes('updated planning items') &&
+                           !message.includes('update planning items');
+                  });
+
+                  // Only render section if there are entries after filtering
+                  if (filteredLog.length === 0) return null;
+
+                  return (
+                    <section className="task-section">
+                      <h3 className="task-section-title">📝 Activity Log</h3>
+                      <div className="activity-log">
+                        {filteredLog.map((entry, index) => (
+                          <div key={index} className={`activity-entry ${entry.level || 'info'}`}>
+                            <span className="activity-time">{formatTimestamp(entry.timestamp)}</span>
+                            <span className="activity-message">{entry.message}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  );
+                })()}
 
                 {/* Token Usage */}
                 {taskDetails.token_usage && (
