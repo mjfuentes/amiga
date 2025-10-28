@@ -45,7 +45,7 @@ let autoScrollEnabled = true;
 // SocketIO connection for real-time tool updates
 let socket = null;
 
-// Handle hash-based routing for task links
+// Handle hash-based routing for task and session links
 function handleHashRouting() {
     const hash = window.location.hash;
 
@@ -55,19 +55,30 @@ function handleHashRouting() {
 
     // Remove the # prefix and parse query params
     const hashValue = hash.substring(1);
-    const [taskPart, queryString] = hashValue.split('?');
+    const [idPart, queryString] = hashValue.split('?');
 
     // Parse query parameters (e.g., ?ref=chat)
     const params = new URLSearchParams(queryString || '');
     const referrer = params.get('ref');
 
+    // Check if it's a session link (UUID format with hyphens)
+    // Session IDs are UUIDs like: 10cc6d23-ea6e-5f50-8c4e-0a66c68fe6b5
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (uuidPattern.test(idPart)) {
+        showSessionDetail(idPart);
+        // Clear hash to prevent issues with browser back button
+        history.replaceState(null, null, ' ');
+        return;
+    }
+
     // Check if it's a task link (format: task_<id> or just the hex ID)
     let taskId = null;
-    if (taskPart.startsWith('task_')) {
-        taskId = taskPart.substring(5); // Remove 'task_' prefix
-    } else if (taskPart && taskPart.length >= 6) {
+    if (idPart.startsWith('task_')) {
+        taskId = idPart.substring(5); // Remove 'task_' prefix
+    } else if (idPart && idPart.length >= 6 && !idPart.includes('-')) {
         // Assume it's a raw task ID (at least 6 hex chars)
-        taskId = taskPart;
+        // Make sure it's not a UUID (no hyphens)
+        taskId = idPart;
     }
 
     if (taskId) {
