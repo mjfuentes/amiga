@@ -3358,23 +3358,11 @@ def stream_metrics():
 
 def setup_graceful_shutdown():
     """
-    Setup signal handlers for graceful shutdown.
-    Handles SIGTERM and SIGINT for clean server termination.
+    Shutdown cleanup handled in run_server() finally block.
+    Signal handlers removed - deploy script uses kill -9, async cleanup
+    in signal context causes event loop closure race conditions.
     """
-    def shutdown_handler(signum, frame):
-        """Handle shutdown signals gracefully"""
-        sig_name = "SIGTERM" if signum == signal.SIGTERM else "SIGINT"
-        logger.info(f"Received {sig_name}, initiating graceful shutdown...")
-
-        # Interrupt main thread to trigger KeyboardInterrupt
-        # This allows Flask to exit gracefully and run finally block
-        # with event loop still active
-        import _thread
-        _thread.interrupt_main()
-
-    signal.signal(signal.SIGTERM, shutdown_handler)
-    signal.signal(signal.SIGINT, shutdown_handler)
-    logger.info("Graceful shutdown handlers registered for SIGTERM and SIGINT")
+    logger.info("Shutdown cleanup will be handled in finally block")
 
 
 def run_server(host: str = "0.0.0.0", port: int = 3000, debug: bool = False):  # nosec B104
