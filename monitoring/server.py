@@ -1041,27 +1041,30 @@ def user_task_detail(task_id):
 def stop_task(task_id):
     """
     Stop a running task by terminating its Claude CLI session.
-    
+
     The task status will be updated to 'stopped' and any partial progress
     will be preserved in the tool usage logs.
-    
+
     Returns:
         200: Task stop requested successfully
         404: Task not found or not running
         500: Internal server error
     """
     try:
-        logger.info(f"Stop request received for task {task_id}")
-        
+        # Strip task_ prefix if present (frontend sends task_abc123, DB stores abc123)
+        normalized_task_id = task_id.removeprefix("task_")
+
+        logger.info(f"Stop request received for task {normalized_task_id}")
+
         # Use asyncio to call the async terminate_session method
         global _agent_pool_loop
         if _agent_pool_loop is None:
             logger.error("Agent pool event loop not available")
             return jsonify({"error": "Server not ready"}), 503
-        
+
         async def stop_task_async():
             """Terminate the Claude session for this task"""
-            success = await claude_pool.terminate_session(task_id)
+            success = await claude_pool.terminate_session(normalized_task_id)
             return success
         
         # Execute in agent pool's event loop
@@ -1112,10 +1115,13 @@ def revert_task(task_id):
         500: Internal server error
     """
     try:
-        logger.info(f"Revert request received for task {task_id}")
-        
+        # Strip task_ prefix if present (frontend sends task_abc123, DB stores abc123)
+        normalized_task_id = task_id.removeprefix("task_")
+
+        logger.info(f"Revert request received for task {normalized_task_id}")
+
         # Get the original task to verify it exists and get context
-        task = task_manager.get_task(task_id)
+        task = task_manager.get_task(normalized_task_id)
         if not task:
             return jsonify({"error": f"Task {task_id} not found"}), 404
         
@@ -1195,10 +1201,13 @@ def mark_task_fixed(task_id):
         500: Internal server error
     """
     try:
-        logger.info(f"Mark-as-fixed request received for task {task_id}")
-        
+        # Strip task_ prefix if present (frontend sends task_abc123, DB stores abc123)
+        normalized_task_id = task_id.removeprefix("task_")
+
+        logger.info(f"Mark-as-fixed request received for task {normalized_task_id}")
+
         # Get the task to verify it exists
-        task = task_manager.get_task(task_id)
+        task = task_manager.get_task(normalized_task_id)
         if not task:
             return jsonify({"error": f"Task {task_id} not found"}), 404
         
@@ -1214,12 +1223,12 @@ def mark_task_fixed(task_id):
         async def update_task_status():
             """Update task status to completed and clear error"""
             await task_manager.update_task(
-                task_id=task_id,
+                task_id=normalized_task_id,
                 status="completed",
                 error="",  # Clear the error message
             )
             # Return updated task
-            return task_manager.get_task(task_id)
+            return task_manager.get_task(normalized_task_id)
         
         # Execute in agent pool's event loop
         future = asyncio.run_coroutine_threadsafe(update_task_status(), _agent_pool_loop)
@@ -1400,16 +1409,19 @@ def task_tool_usage(task_id):
     try:
         from collections import defaultdict
 
+        # Strip task_ prefix if present (frontend sends task_abc123, DB stores abc123)
+        normalized_task_id = task_id.removeprefix("task_")
+
         # End any stale read transaction to see latest writes
         task_manager.db.conn.rollback()
 
         # Get session_uuid for this task (needed for tool_usage correlation)
-        task = task_manager.db.get_task(task_id)
+        task = task_manager.db.get_task(normalized_task_id)
         session_uuid = task.get("session_uuid") if task else None
 
-        # Query tool_usage with session_uuid if available, fallback to task_id
+        # Query tool_usage with session_uuid if available, fallback to normalized task_id
         # (session_uuid is Claude's UUID, task_id is short ID for background tasks)
-        query_id = session_uuid if session_uuid else task_id
+        query_id = session_uuid if session_uuid else normalized_task_id
 
         # Get tool usage from database
         # Deduplicate by keeping only the latest version of each tool call
@@ -2432,8 +2444,11 @@ def all_tasks():
 def task_detail(task_id: str):
     """Get detailed information about a specific task"""
     try:
+        # Strip task_ prefix if present (frontend sends task_abc123, DB stores abc123)
+        normalized_task_id = task_id.removeprefix("task_")
+
         # Get task from database
-        task_dict = task_manager.db.get_task(task_id)
+        task_dict = task_manager.db.get_task(normalized_task_id)
 
         if not task_dict:
             return jsonify({"error": "Task not found"}), 404
@@ -2673,15 +2688,18 @@ def download_task_output(task_id: str):
     try:
         from flask import send_file
 
+        # Strip task_ prefix if present (frontend sends task_abc123, DB stores abc123)
+        normalized_task_id = task_id.removeprefix("task_")
+
         # Security: Validate task_id format (alphanumeric and hyphens only)
-        if not all(c.isalnum() or c in "-_" for c in task_id):
+        if not all(c.isalnum() or c in "-_" for c in normalized_task_id):
             return jsonify({"error": "Invalid task ID"}), 400
 
         # Check multiple possible session log locations
         workspace_path_env = os.getenv("WORKSPACE_PATH", "/Users/matifuentes/Workspace")
         possible_locations = [
-            Path(sessions_dir) / task_id,  # Local (agentlab/logs/sessions/)
-            Path(workspace_path_env) / "logs" / "sessions" / task_id,  # Workspace
+            Path(sessions_dir) / normalized_task_id,  # Local (agentlab/logs/sessions/)
+            Path(workspace_path_env) / "logs" / "sessions" / normalized_task_id,  # Workspace
         ]
 
         session_dir = None
@@ -2728,8 +2746,11 @@ def download_task_output(task_id: str):
 def task_documents(task_id: str):
     """Get list of markdown documents for a specific task"""
     try:
+        # Strip task_ prefix if present (frontend sends task_abc123, DB stores abc123)
+        normalized_task_id = task_id.removeprefix("task_")
+
         # Security: Validate task_id format (alphanumeric and hyphens only)
-        if not all(c.isalnum() or c in "-_" for c in task_id):
+        if not all(c.isalnum() or c in "-_" for c in normalized_task_id):
             return jsonify({"error": "Invalid task ID"}), 400
 
         # Check if content should be included
@@ -2738,8 +2759,8 @@ def task_documents(task_id: str):
         # Check multiple possible session log locations (same as download_task_output)
         workspace_path_env = os.getenv("WORKSPACE_PATH", "/Users/matifuentes/Workspace")
         possible_locations = [
-            Path(sessions_dir) / task_id,  # Local (agentlab/logs/sessions/)
-            Path(workspace_path_env) / "logs" / "sessions" / task_id,  # Workspace
+            Path(sessions_dir) / normalized_task_id,  # Local (agentlab/logs/sessions/)
+            Path(workspace_path_env) / "logs" / "sessions" / normalized_task_id,  # Workspace
         ]
 
         session_dir = None
@@ -2902,6 +2923,9 @@ def serve_screenshot(filepath: str):
 def task_screenshots(task_id: str):
     """Get list of screenshots for a specific task"""
     try:
+        # Strip task_ prefix if present (frontend sends task_abc123, DB stores abc123)
+        normalized_task_id = task_id.removeprefix("task_")
+
         # Get screenshots from tool_usage database
         cursor = task_manager.db.conn.cursor()
         cursor.execute(
@@ -2911,7 +2935,7 @@ def task_screenshots(task_id: str):
             WHERE task_id = ? AND screenshot_path IS NOT NULL
             ORDER BY timestamp ASC
             """,
-            (task_id,),
+            (normalized_task_id,),
         )
 
         screenshots = []
