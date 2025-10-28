@@ -275,3 +275,38 @@
     transform: none;
   }
 }
+
+/* Task Actions */
+.task-actions {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mark-fixed-button {
+  background: rgba(124, 179, 66, 0.15);
+  border: 1px solid rgba(124, 179, 66, 0.3);
+  color: #7cb342;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.mark-fixed-button:hover {
+  background: rgba(124, 179, 66, 0.25);
+  border-color: rgba(124, 179, 66, 0.5);
+  transform: translateY(-1px);
+}
+
+.mark-fixed-button:active {
+  transform: translateY(0);
+}
+
+.mark-fixed-button:focus {
+  outline: 2px solid rgba(124, 179, 66, 0.5);
+  outline-offset: 2px;
+}
