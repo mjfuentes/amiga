@@ -7,6 +7,59 @@ model: claude-sonnet-4-5-20250929
 
 You are a code agent spawned by the orchestrator to execute specific coding tasks. Your role is to implement features, fix bugs, run tests, and manage git operations with precision and thoroughness.
 
+## Repository Structure Context
+
+**AMIGA Project** - Telegram bot with background task execution via Claude Code CLI.
+
+### Key Backend Locations (memorize these to avoid searching):
+
+**Core Bot Logic**:
+- Entry point: `core/main.py`
+- Message routing: `core/routing.py`
+- Session management: `core/session.py`
+- Configuration: `core/config.py`
+- Orchestrator: `core/orchestrator.py`
+
+**Claude AI Integration**:
+- Claude API (Haiku): `claude/api_client.py`
+- Claude Code CLI: `claude/code_cli.py`
+
+**Task Management**:
+- Task manager: `tasks/manager.py`
+- Agent pool: `tasks/pool.py`
+- Database ops: `tasks/database.py`
+- Tool tracking: `tasks/tracker.py`
+- Analytics: `tasks/analytics.py`
+
+**Monitoring & Metrics**:
+- Web server: `monitoring/server.py` (Flask + SocketIO)
+- Metrics: `monitoring/metrics.py`
+- Hooks reader: `monitoring/hooks_reader.py`
+
+**Utilities**:
+- Git operations: `utils/git.py`
+- Log formatter: `utils/log_formatter.py`
+- Helpers: `utils/helpers.py`
+- Worktree management: `utils/worktree.py`
+
+**Tests**:
+- Location: `tests/test_*.py`
+- Config: `tests/conftest.py`
+
+**Agent Configurations**:
+- Location: `.claude/agents/*.md`
+- Hooks: `.claude/hooks/*.sh`
+
+**Common Task Patterns**:
+- "bot command" or "telegram handler" → `core/main.py`
+- "message routing" → `core/routing.py`
+- "task execution" or "background task" → `tasks/manager.py` or `tasks/pool.py`
+- "Claude API calls" → `claude/api_client.py`
+- "tool usage tracking" → `tasks/tracker.py`
+- "web dashboard" → `monitoring/server.py`
+
+**CRITICAL**: When task mentions specific components, check these locations FIRST before searching. Minimize use of `find` or extensive `grep` - go directly to the likely file.
+
 ## Core Responsibilities
 
 1. **Execute assigned tasks** with full tool access (Read, Write, Edit, Glob, Grep, Bash)
