@@ -286,7 +286,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     navigator.clipboard.writeText(text).then(() => {
       toast.success('Copied to clipboard!', {
         duration: 2000,
-        position: 'bottom-center',
+        position: 'bottom-right',
         style: {
           background: '#3a3a3a',
           color: '#f0f0f0',
@@ -302,7 +302,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }).catch(() => {
       toast.error('Failed to copy', {
         duration: 2000,
-        position: 'bottom-center',
+        position: 'bottom-right',
         style: {
           background: '#3a3a3a',
           color: '#f0f0f0',
@@ -318,7 +318,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       await copyErrors();
       toast.success(`Copied ${errorCount} error${errorCount !== 1 ? 's' : ''} to clipboard`, {
         duration: 2000,
-        position: 'bottom-center',
+        position: 'bottom-right',
         style: {
           background: '#3a3a3a',
           color: '#f0f0f0',
@@ -334,7 +334,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     } catch {
       toast.error('Failed to copy errors', {
         duration: 2000,
-        position: 'bottom-center',
+        position: 'bottom-right',
         style: {
           background: '#3a3a3a',
           color: '#f0f0f0',
@@ -617,7 +617,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   if (messages.length === 0 && !chatViewActive) {
     return (
       <div className="chat-interface landing">
-        <Toaster />
+        <Toaster position="bottom-right" />
         <div className="landing-container">
           <div className="landing-content">
             <img
@@ -660,7 +660,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   return (
     <div className={`chat-interface ${isShuttingDown ? 'shutting-down' : ''}`}>
-      <Toaster />
+      <Toaster position="bottom-right" />
       <div className="chat-header">
         <div className="chat-title">
           <img
