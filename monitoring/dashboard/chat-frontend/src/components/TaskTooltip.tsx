@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import './TaskTooltip.css';
 
 interface TaskDetails {
@@ -183,7 +184,7 @@ export const TaskTooltip: React.FC<TaskTooltipProps> = ({
     }
   };
 
-  return (
+  const tooltipContent = (
     <div
       ref={tooltipRef}
       className="task-tooltip task-tooltip-compact"
@@ -243,4 +244,8 @@ export const TaskTooltip: React.FC<TaskTooltipProps> = ({
       ) : null}
     </div>
   );
+
+  // Render tooltip using a portal to document.body
+  // This ensures position:fixed works correctly relative to viewport
+  return ReactDOM.createPortal(tooltipContent, document.body);
 };
