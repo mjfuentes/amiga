@@ -12,8 +12,8 @@ import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import toast, { Toaster } from 'react-hot-toast';
-import { Message as MessageType, TodoItem, ToolCall } from '../types';
-import { TodoList } from './TodoList';
+import { Message as MessageType } from '../types';
+import { TaskTooltip } from './TaskTooltip';
 import './ChatInterface.css';
 
 interface Task {
@@ -57,6 +57,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [isShuttingDown, setIsShuttingDown] = useState(false);
   const [taskStatusMap, setTaskStatusMap] = useState<Map<string, string>>(new Map());
+  const [activeTooltip, setActiveTooltip] = useState<{ taskId: string; element: HTMLElement } | null>(null);
   const lastMessageCountRef = useRef(messages.length);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputListenerAttachedRef = useRef(false);
@@ -72,6 +73,15 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       textarea.focus();
       inputRef.current = textarea;
     }
+  };
+
+  // Helper function to add task reference to chat input
+  const addTaskToChat = (taskRef: string) => {
+    // Add task reference to current input value
+    const newValue = inputValue ? `${inputValue} ${taskRef}` : taskRef;
+    setInputValue(newValue);
+    // Focus the input
+    setTimeout(focusInput, 100);
   };
 
   // Helper function to scroll to show the user's sent message and subsequent conversation
@@ -336,7 +346,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             // Navigate to monitoring dashboard with task highlighted
             window.location.href = `/dashboard#${urlTaskId}?ref=chat`;
           }}
-          title={`View task ${taskId} in monitoring dashboard${status ? ` (${status})` : ''}`}
+          onMouseEnter={(e) => {
+            const target = e.currentTarget as HTMLElement;
+            setActiveTooltip({ taskId: urlTaskId, element: target });
+          }}
+          title={`Hover for details, click to view in dashboard${status ? ` (${status})` : ''}`}
         >
           {status && (
             <span
@@ -625,9 +639,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                               const language = match ? match[1] : '';
                               const codeString = String(children).replace(/\n$/, '');
 
-                              // Check if inline code contains a task ID (e.g., #task_abc or #abc123)
+                              // Check if inline code contains a task ID (e.g., #task_abc, #abc123, task_abc, or abc123)
                               if (isInline) {
-                                const taskIdMatch = /^#((?:task_[a-zA-Z0-9_]+)|(?:[a-f0-9]{6}))$/.exec(codeString);
+                                const taskIdMatch = /^#?((?:task_[a-zA-Z0-9_]+)|(?:[a-f0-9]{6}))$/.exec(codeString);
                                 if (taskIdMatch) {
                                   const taskId = taskIdMatch[1];
                                   const urlTaskId = taskId.startsWith('task_') ? taskId : `task_${taskId}`;
@@ -642,7 +656,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                                         e.preventDefault();
                                         window.location.href = `/dashboard#${urlTaskId}?ref=chat`;
                                       }}
-                                      title={`View task ${taskId} in monitoring dashboard${status ? ` (${status})` : ''}`}
+                                      onMouseEnter={(e) => {
+                                        const target = e.currentTarget as HTMLElement;
+                                        setActiveTooltip({ taskId: urlTaskId, element: target });
+                                      }}
+                                      title={`Hover for details, click to view in dashboard${status ? ` (${status})` : ''}`}
                                       {...props}
                                     >
                                       {status && (
@@ -772,6 +790,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           />
         </div>
       </MainContainer>
+
+      {/* Task Tooltip */}
+      {activeTooltip && (
+        <TaskTooltip
+          taskId={activeTooltip.taskId}
+          targetElement={activeTooltip.element}
+          onAddToChat={addTaskToChat}
+          onClose={() => setActiveTooltip(null)}
+        />
+      )}
     </div>
   );
 };
