@@ -29,11 +29,10 @@ export const TaskTooltip: React.FC<TaskTooltipProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Get initial position from target
-  const targetRect = targetElement.getBoundingClientRect();
+  // Position will be calculated in useLayoutEffect
   const [position, setPosition] = useState<{ top: number; left: number }>({
-    top: targetRect.bottom + 8,
-    left: targetRect.left
+    top: 0,
+    left: 0
   });
   const [isPositioned, setIsPositioned] = useState(false);
   const tooltipRef = useRef<HTMLDivElement>(null);
