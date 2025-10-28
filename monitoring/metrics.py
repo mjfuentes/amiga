@@ -201,9 +201,10 @@ class MetricsAggregator:
         # Active tasks count from database (bot tasks + active CLI sessions)
         cursor = self.task_manager.db.conn.cursor()
 
-        # Count bot tasks (pending/running)
+        # Count bot tasks (pending/running) - handle None result
         cursor.execute("SELECT COUNT(*) FROM tasks WHERE status IN ('pending', 'running')")
-        bot_tasks_count = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        bot_tasks_count = result[0] if result is not None else 0
 
         # Count active CLI sessions (tool usage in last 5 minutes, not in tasks table)
         cutoff_cli = (datetime.now() - timedelta(minutes=5)).isoformat()
@@ -216,7 +217,8 @@ class MetricsAggregator:
         """,
             (cutoff_cli,),
         )
-        cli_sessions_count = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        cli_sessions_count = result[0] if result is not None else 0
 
         active_tasks_count = bot_tasks_count + cli_sessions_count
 
