@@ -66,10 +66,15 @@ class MetricsAggregator:
 
         recent_tasks = []
         for row in cursor.fetchall():
+            # Defensive: ensure row has all 9 expected columns
+            if len(row) < 9:
+                logger.warning(f"Task row has only {len(row)} columns, expected 9: {row}")
+                continue
+
             task_dict = {
                 "task_id": row[0],
                 "user_id": row[1],
-                "description": row[2][:100],
+                "description": (row[2] or "")[:100],  # Handle NULL description
                 "status": row[3],
                 "created_at": row[4],
                 "updated_at": row[5],
