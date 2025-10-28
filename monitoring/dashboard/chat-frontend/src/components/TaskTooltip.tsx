@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import './TaskTooltip.css';
 
 interface TaskDetails {
@@ -28,7 +28,7 @@ export const TaskTooltip: React.FC<TaskTooltipProps> = ({
   const [taskDetails, setTaskDetails] = useState<TaskDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [position, setPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
 
   // Fetch task details and tool calls
@@ -61,8 +61,8 @@ export const TaskTooltip: React.FC<TaskTooltipProps> = ({
     fetchTaskData();
   }, [taskId]);
 
-  // Calculate tooltip position
-  useEffect(() => {
+  // Calculate tooltip position using useLayoutEffect for synchronous positioning before paint
+  useLayoutEffect(() => {
     if (!tooltipRef.current || !targetElement) return;
 
     const calculatePosition = () => {
@@ -103,15 +103,14 @@ export const TaskTooltip: React.FC<TaskTooltipProps> = ({
       setPosition({ top, left });
     };
 
-    // Initial calculation with slight delay to ensure DOM is ready
-    const initialTimer = setTimeout(calculatePosition, 10);
+    // Calculate position immediately (synchronously)
+    calculatePosition();
 
     // Recalculate on scroll or resize
     window.addEventListener('scroll', calculatePosition, true);
     window.addEventListener('resize', calculatePosition);
 
     return () => {
-      clearTimeout(initialTimer);
       window.removeEventListener('scroll', calculatePosition, true);
       window.removeEventListener('resize', calculatePosition);
     };
@@ -194,8 +193,8 @@ export const TaskTooltip: React.FC<TaskTooltipProps> = ({
   return (
     <div
       ref={tooltipRef}
-      className="task-tooltip task-tooltip-compact"
-      style={{ top: `${position.top}px`, left: `${position.left}px` }}
+      className={`task-tooltip task-tooltip-compact ${!position ? 'task-tooltip-hidden' : ''}`}
+      style={position ? { top: `${position.top}px`, left: `${position.left}px` } : { visibility: 'hidden' }}
     >
       {loading ? (
         <div className="task-tooltip-loading">
