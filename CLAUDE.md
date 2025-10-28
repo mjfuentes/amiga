@@ -814,7 +814,7 @@ validate_file_path(path, base_path)  # Prevent directory traversal
 ### Cost Optimization
 
 **Token minimization** in `claude/api_client.py`:
-- Conversation history: Last 2 messages only, truncate to 500 chars
+- Conversation history: Last 20 messages, truncate to 5000 chars per message
 - Active tasks: Max 3 tasks, omit descriptions
 - Logs: Last 50 lines only (not 200)
 - Don't include `available_repositories` list (~100 tokens saved)
@@ -930,7 +930,7 @@ result = await async_function()
 **Problem**: Including full conversation history or all logs wastes tokens and increases cost.
 
 **Solution**: Strict limits in `claude/api_client.py`:
-- History: Last 2 messages, 500 chars each
+- History: Last 20 messages, 5000 chars each
 - Logs: Last 50 lines
 - Tasks: Max 3, no descriptions
 
@@ -1086,7 +1086,7 @@ cat data/cost_tracking.json | jq
 ### Token Reduction
 
 **Current optimizations** in `claude/api_client.py`:
-- ✅ History truncation (last 2 messages, 500 chars)
+- ✅ History truncation (last 20 messages, 5000 chars)
 - ✅ Log truncation (last 50 lines)
 - ✅ Task truncation (max 3)
 - ✅ Omit repos list
