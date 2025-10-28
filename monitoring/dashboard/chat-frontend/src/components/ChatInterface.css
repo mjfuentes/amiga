@@ -83,11 +83,12 @@
 
 .landing .cs-message-input__content-editor-wrapper {
   background: #1a1a1a !important;
-  border: 1px solid #3a3a3a !important;
+  border: 1px solid #4a4a4a !important;
   border-radius: 8px !important;
   padding: 0 !important;
-  box-shadow: 0 0 0 1px rgba(106, 159, 181, 0.2) !important;
+  box-shadow: 0 0 0 2px rgba(106, 159, 181, 0.3) !important;
   transition: all 0.2s ease !important;
+  animation: inputGlow 2s ease-in-out infinite !important;
 }
 
 .landing .cs-message-input__content-editor {
@@ -101,8 +102,8 @@
 }
 
 .landing .cs-message-input__content-editor-wrapper:focus-within {
-  border-color: #4a4a4a !important;
-  box-shadow: 0 0 0 2px rgba(106, 159, 181, 0.3) !important;
+  border-color: #5a5a5a !important;
+  box-shadow: 0 0 0 2px rgba(106, 159, 181, 0.4) !important;
 }
 
 .landing .cs-message-input__content-editor:focus {
@@ -714,14 +715,25 @@
   z-index: 100 !important;
 }
 
+/* Always-focused input styling */
+@keyframes inputGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 2px rgba(106, 159, 181, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 0 2px rgba(106, 159, 181, 0.5);
+  }
+}
+
 /* Remove the chatscope wrapper's background */
 .cs-message-input__content-editor-wrapper {
   background: #1a1a1a !important;
-  border: 1px solid #3a3a3a !important;
+  border: 1px solid #4a4a4a !important;
   border-radius: 4px !important;
   padding: 0 !important;
   transition: all 0.2s ease !important;
-  box-shadow: 0 0 0 1px rgba(106, 159, 181, 0.2) !important;
+  box-shadow: 0 0 0 2px rgba(106, 159, 181, 0.3) !important;
+  animation: inputGlow 2s ease-in-out infinite !important;
 }
 
 .cs-message-input__content-editor-container {
@@ -751,8 +763,8 @@
 }
 
 .cs-message-input__content-editor-wrapper:focus-within {
-  border-color: #4a4a4a !important;
-  box-shadow: 0 0 0 2px rgba(106, 159, 181, 0.3) !important;
+  border-color: #5a5a5a !important;
+  box-shadow: 0 0 0 2px rgba(106, 159, 181, 0.4) !important;
 }
 
 .cs-message-input__content-editor:focus {
@@ -1201,5 +1213,12 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  /* Disable input glow animation for users with motion sensitivity */
+  .cs-message-input__content-editor-wrapper,
+  .landing .cs-message-input__content-editor-wrapper {
+    animation: none !important;
+    box-shadow: 0 0 0 2px rgba(106, 159, 181, 0.4) !important;
   }
 }
