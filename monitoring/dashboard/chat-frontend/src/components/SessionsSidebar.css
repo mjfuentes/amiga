@@ -135,7 +135,7 @@
 .session-item:hover {
   background: rgba(255, 255, 255, 0.06);
   border-color: rgba(106, 159, 181, 0.4);
-  transform: translateX(-2px);
+  transform: translateX(2px);
 }
 
 .session-item:focus {
@@ -171,6 +171,16 @@
   font-weight: 600;
 }
 
+.session-info {
+  font-size: 0.8125rem;
+  color: #d0d0d0;
+  line-height: 1.4;
+  margin-bottom: 0.5rem;
+  min-height: 2.24rem;
+  display: flex;
+  align-items: center;
+}
+
 .session-meta {
   display: flex;
   align-items: center;
@@ -181,6 +191,10 @@
 }
 
 .session-tools {
+  color: #d0d0d0;
+}
+
+.session-agent {
   background: rgba(255, 255, 255, 0.05);
   padding: 0.125rem 0.5rem;
   border-radius: 4px;
