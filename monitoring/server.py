@@ -1216,7 +1216,7 @@ def mark_task_fixed(task_id):
             await task_manager.update_task(
                 task_id=task_id,
                 status="completed",
-                error=None,  # Clear the error message
+                error="",  # Clear the error message
             )
             # Return updated task
             return task_manager.get_task(task_id)
@@ -3366,31 +3366,11 @@ def setup_graceful_shutdown():
         sig_name = "SIGTERM" if signum == signal.SIGTERM else "SIGINT"
         logger.info(f"Received {sig_name}, initiating graceful shutdown...")
 
-        # Schedule shutdown tasks BEFORE stopping the loop
-        if _agent_pool_loop and not _agent_pool_loop.is_closed():
-            logger.info("Stopping task monitor...")
-            try:
-                future_monitor = asyncio.run_coroutine_threadsafe(task_monitor.stop(), _agent_pool_loop)
-                future_monitor.result(timeout=2.0)  # Wait up to 2s
-            except Exception as e:
-                logger.warning(f"Error stopping task monitor: {e}")
-
-            logger.info("Stopping agent pool...")
-            try:
-                future_pool = asyncio.run_coroutine_threadsafe(agent_pool.stop(), _agent_pool_loop)
-                future_pool.result(timeout=2.0)  # Wait up to 2s
-            except Exception as e:
-                logger.warning(f"Error stopping agent pool: {e}")
-
-            # Now stop the event loop
-            _agent_pool_loop.call_soon_threadsafe(_agent_pool_loop.stop)
-
-        # Close database
-        logger.info("Closing database connection...")
-        close_database()
-
-        logger.info("Graceful shutdown complete")
-        sys.exit(0)
+        # Interrupt main thread to trigger KeyboardInterrupt
+        # This allows Flask to exit gracefully and run finally block
+        # with event loop still active
+        import _thread
+        _thread.interrupt_main()
 
     signal.signal(signal.SIGTERM, shutdown_handler)
     signal.signal(signal.SIGINT, shutdown_handler)
@@ -3518,6 +3498,8 @@ def run_server(host: str = "0.0.0.0", port: int = 3000, debug: bool = False):  #
 
     try:
         socketio.run(app, host=host, port=port, debug=debug, allow_unsafe_werkzeug=True)
+    except KeyboardInterrupt:
+        logger.info("Received interrupt signal, shutting down...")
     finally:
         logger.info("Server shutdown - cleaning up...")
         if _agent_pool_loop and not _agent_pool_loop.is_closed():
@@ -3526,19 +3508,28 @@ def run_server(host: str = "0.0.0.0", port: int = 3000, debug: bool = False):  #
                 future = asyncio.run_coroutine_threadsafe(task_monitor.stop(), _agent_pool_loop)
                 future.result(timeout=2.0)
             except Exception as e:
-                logger.warning(f"Error stopping task monitor in finally: {e}")
+                logger.warning(f"Error stopping task monitor: {e}")
 
             logger.info("Shutting down agent pool...")
             try:
+                future = asyncio.run_coroutine_threadsafe(agent_pool.stop(), _agent_pool_loop)
+                future.result(timeout=2.0)
+            except Exception as e:
+                logger.warning(f"Error stopping agent pool: {e}")
+
+            logger.info("Stopping event loop...")
+            try:
                 _agent_pool_loop.call_soon_threadsafe(_agent_pool_loop.stop)
             except Exception as e:
-                logger.warning(f"Error stopping agent pool in finally: {e}")
+                logger.warning(f"Error stopping event loop: {e}")
 
         logger.info("Closing database connection...")
         try:
             close_database()
         except Exception as e:
             logger.warning(f"Error closing database: {e}")
+
+        logger.info("Graceful shutdown complete")
 
 
 # --- Auto-Restart on File Changes ---
