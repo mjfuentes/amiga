@@ -79,14 +79,17 @@ class TestTaskExecutor:
     @pytest.mark.asyncio
     async def test_submit_task(self, executor, client):
         """Test task submission via Unix socket"""
+        from tasks.manager import TaskManager
+
         task_id = "test123"
         description = "Test task"
         workspace = "/tmp/test"
         user_id = "user1"
         priority = "HIGH"
 
-        # Create task in database first
-        task = await executor.task_manager.create_task(
+        # Create task in database first (server does this)
+        task_manager = TaskManager()
+        task = await task_manager.create_task(
             user_id=int(user_id.replace("user", "")),
             description=description,
             workspace=workspace,
@@ -98,14 +101,6 @@ class TestTaskExecutor:
 
         assert response["status"] == "queued"
         assert response["task_id"] == task_id
-
-    @pytest.mark.asyncio
-    async def test_get_task_status_not_found(self, executor, client):
-        """Test task status query for non-existent task"""
-        response = await client.get_task_status("nonexistent")
-
-        assert "error" in response
-        assert "not found" in response["error"]
 
     @pytest.mark.asyncio
     async def test_socket_cleanup_on_shutdown(self, executor, client):
@@ -136,11 +131,14 @@ class TestTaskExecutor:
     @pytest.mark.asyncio
     async def test_multiple_task_submissions(self, executor, client):
         """Test multiple tasks can be submitted"""
+        from tasks.manager import TaskManager
+
+        task_manager = TaskManager()
         tasks = []
 
         for i in range(5):
-            # Create task in database first
-            task = await executor.task_manager.create_task(
+            # Create task in database first (server does this)
+            task = await task_manager.create_task(
                 user_id=1, description=f"Task {i}", workspace="/tmp/test", model="sonnet"
             )
 
@@ -199,10 +197,14 @@ class TestTaskExecutor:
     @pytest.mark.asyncio
     async def test_concurrent_requests(self, executor, client):
         """Test executor can handle concurrent requests"""
-        # Create tasks in database first
+        from tasks.manager import TaskManager
+
+        task_manager = TaskManager()
+
+        # Create tasks in database first (server does this)
         db_tasks = []
         for i in range(10):
-            task = await executor.task_manager.create_task(
+            task = await task_manager.create_task(
                 user_id=1, description=f"Task {i}", workspace="/tmp", model="sonnet"
             )
             db_tasks.append(task)
@@ -238,6 +240,8 @@ class TestTaskExecutorResilience:
         This is the critical test that verifies the executor can run independently
         of the monitoring server.
         """
+        from tasks.manager import TaskManager
+
         # Start executor
         executor = TaskExecutor()
         executor_task = asyncio.create_task(executor.start())
@@ -254,8 +258,9 @@ class TestTaskExecutorResilience:
         with open(PID_FILE, "r") as f:
             executor_pid = int(f.read().strip())
 
-        # Create task in database first
-        task = await executor.task_manager.create_task(user_id=1, description="Test task", workspace="/tmp", model="sonnet")
+        # Create task in database first (server does this)
+        task_manager = TaskManager()
+        task = await task_manager.create_task(user_id=1, description="Test task", workspace="/tmp", model="sonnet")
 
         # Submit a task
         client = TaskExecutorClient()

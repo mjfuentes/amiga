@@ -17,7 +17,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from tasks.pool import AgentPool, TaskPriority
-from tasks.manager import TaskManager
 from tasks.tracker import ToolUsageTracker
 from claude.code_cli import ClaudeSessionPool
 
@@ -28,17 +27,15 @@ PID_FILE = "/tmp/amiga-task-executor.pid"
 
 
 class TaskExecutor:
-    """Standalone task executor service"""
+    """Standalone task executor service - ONLY executes tasks, does not store data"""
 
     def __init__(self):
         self.agent_pool = AgentPool(max_agents=3)
-        self.task_manager = TaskManager()
         self.usage_tracker = ToolUsageTracker()
         self.claude_pool = ClaudeSessionPool(max_concurrent=3, usage_tracker=self.usage_tracker)
         self.server = None
         self.start_time = time.time()
         self._running = False
-        self._task_callbacks = {}  # Store callbacks for task notifications
 
     async def start(self):
         """Start task executor service"""
@@ -107,8 +104,6 @@ class TaskExecutor:
                 response = await self.submit_task(message)
             elif action == "health":
                 response = self.get_health()
-            elif action == "get_status":
-                response = await self.get_task_status(message.get("task_id"))
             else:
                 response = {"error": f"Unknown action: {action}"}
 
@@ -138,16 +133,13 @@ class TaskExecutor:
         # Convert priority string to enum
         priority = TaskPriority[priority_str]
 
-        # Get task from database
-        task = self.task_manager.get_task(task_id)
-        if not task:
-            logger.error(f"Task {task_id} not found in database")
-            return {"error": f"Task {task_id} not found"}
-
         # Submit task to agent pool for execution
+        # Task will update database itself via TaskManager
         await self.agent_pool.submit(
             self._execute_task,
-            task=task,
+            task_id=task_id,
+            description=description,
+            workspace=workspace,
             user_id=user_id,
             model=model,
             context=context,
@@ -160,25 +152,37 @@ class TaskExecutor:
         return {"status": "queued", "task_id": task_id}
 
     async def _execute_task(
-        self, task, user_id: str, model: str = "sonnet", context: str | None = None, bot_repo_path: str | None = None
+        self,
+        task_id: str,
+        description: str,
+        workspace: str,
+        user_id: str,
+        model: str = "sonnet",
+        context: str | None = None,
+        bot_repo_path: str | None = None,
     ):
         """
         Execute a task using Claude session pool.
 
         This is the core execution logic that runs in the agent pool worker.
+        Task updates database itself via TaskManager.
         """
+        from tasks.manager import TaskManager
+
+        task_manager = TaskManager()
+
         try:
             # Update task status
-            await self.task_manager.update_task(task.task_id, status="running")
-            logger.info(f"Starting task execution: {task.task_id} in {task.workspace}")
+            await task_manager.update_task(task_id, status="running")
+            logger.info(f"Starting task execution: {task_id} in {workspace}")
 
-            workspace_path = Path(task.workspace)
+            workspace_path = Path(workspace)
 
             # Define PID callback to save PID immediately when process starts
             def save_pid_immediately(pid: int):
                 """Called by claude_pool as soon as process starts"""
-                asyncio.create_task(self.task_manager.update_task(task.task_id, pid=pid))
-                logger.info(f"Task {task.task_id} process started with PID {pid}")
+                asyncio.create_task(task_manager.update_task(task_id, pid=pid))
+                logger.info(f"Task {task_id} process started with PID {pid}")
 
             # Define progress callback to log activity
             def send_progress_update(status_message: str, elapsed_seconds: int):
@@ -193,12 +197,12 @@ class TaskExecutor:
                         output_lines = int(match.group(1))
 
                 # Log to task manager
-                asyncio.create_task(self.task_manager.log_activity(task.task_id, status_message, output_lines, save=True))
+                asyncio.create_task(task_manager.log_activity(task_id, status_message, output_lines, save=True))
 
             # Execute using Claude session pool
             success, result, pid, workflow = await self.claude_pool.execute_task(
-                task_id=task.task_id,
-                description=task.description,
+                task_id=task_id,
+                description=description,
                 workspace=workspace_path,
                 bot_repo_path=bot_repo_path,
                 model=model,
@@ -209,15 +213,15 @@ class TaskExecutor:
 
             # Update task with result
             if success:
-                await self.task_manager.update_task(task.task_id, status="completed", result=result, workflow=workflow)
-                logger.info(f"Task {task.task_id} completed successfully")
+                await task_manager.update_task(task_id, status="completed", result=result, workflow=workflow)
+                logger.info(f"Task {task_id} completed successfully")
             else:
-                await self.task_manager.update_task(task.task_id, status="failed", error=result, workflow=workflow)
-                logger.error(f"Task {task.task_id} failed: {result}")
+                await task_manager.update_task(task_id, status="failed", error=result, workflow=workflow)
+                logger.error(f"Task {task_id} failed: {result}")
 
         except Exception as e:
-            logger.error(f"Task execution error for {task.task_id}: {e}", exc_info=True)
-            await self.task_manager.update_task(task.task_id, status="failed", error=str(e))
+            logger.error(f"Task execution error for {task_id}: {e}", exc_info=True)
+            await task_manager.update_task(task_id, status="failed", error=str(e))
 
     def get_health(self):
         """Get service health status"""
@@ -227,14 +231,6 @@ class TaskExecutor:
             "queued_tasks": self.agent_pool.queue_size,
             "uptime_seconds": int(time.time() - self.start_time),
         }
-
-    async def get_task_status(self, task_id):
-        """Get task status from task manager"""
-        task = self.task_manager.get_task(task_id)
-        if task:
-            return {"status": task.status, "task_id": task.task_id, "started_at": task.created_at}
-        else:
-            return {"error": f"Task {task_id} not found"}
 
 
 async def main():
