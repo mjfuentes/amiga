@@ -9,6 +9,7 @@ interface TaskDetails {
   updated_at: string;
   error?: string;
   result?: string;
+  context?: string; // Full prompt/context for the task
 }
 
 interface ToolCall {
@@ -428,48 +429,61 @@ export const TaskTooltip: React.FC<TaskTooltipProps> = ({
           </div>
 
           <div className="task-tooltip-body">
-            <div className="task-field">
-              <span className="field-label">Description:</span>
-              <p className="field-value description">{taskDetails.description}</p>
-            </div>
-
-            <div className="task-timestamps">
-              <div className="task-field timestamp">
-                <span className="field-label">Created:</span>
-                <span className="field-value">{formatTimestamp(taskDetails.created_at)}</span>
+            {/* For pending tasks: show only the full prompt/context */}
+            {taskDetails.status === 'pending' ? (
+              <div className="task-field">
+                <span className="field-label">Prompt:</span>
+                <p className="field-value description">
+                  {taskDetails.context || taskDetails.description}
+                </p>
               </div>
-              <div className="task-field timestamp">
-                <span className="field-label">Updated:</span>
-                <span className="field-value">{formatTimestamp(taskDetails.updated_at)}</span>
-              </div>
-            </div>
-
-            {/* Tool Execution Log */}
-            {toolCalls.length > 0 && (
-              <div className="task-field tool-execution-log">
-                <span className="field-label">Tool Execution Log:</span>
-                <div className="tool-log-container">
-                  {toolCalls.map((call, index) => (
-                    <React.Fragment key={index}>
-                      {renderToolCall(call)}
-                    </React.Fragment>
-                  ))}
+            ) : (
+              /* For running/completed/failed tasks: show current values */
+              <>
+                <div className="task-field">
+                  <span className="field-label">Description:</span>
+                  <p className="field-value description">{taskDetails.description}</p>
                 </div>
-              </div>
-            )}
 
-            {taskDetails.error && (
-              <div className="task-field error-field">
-                <span className="field-label">Error:</span>
-                <p className="field-value error-message">{taskDetails.error}</p>
-              </div>
-            )}
+                <div className="task-timestamps">
+                  <div className="task-field timestamp">
+                    <span className="field-label">Created:</span>
+                    <span className="field-value">{formatTimestamp(taskDetails.created_at)}</span>
+                  </div>
+                  <div className="task-field timestamp">
+                    <span className="field-label">Updated:</span>
+                    <span className="field-value">{formatTimestamp(taskDetails.updated_at)}</span>
+                  </div>
+                </div>
 
-            {taskDetails.result && !taskDetails.error && (
-              <div className="task-field result-field">
-                <span className="field-label">Result:</span>
-                <p className="field-value result-message">{taskDetails.result}</p>
-              </div>
+                {/* Tool Execution Log */}
+                {toolCalls.length > 0 && (
+                  <div className="task-field tool-execution-log">
+                    <span className="field-label">Tool Execution Log:</span>
+                    <div className="tool-log-container">
+                      {toolCalls.map((call, index) => (
+                        <React.Fragment key={index}>
+                          {renderToolCall(call)}
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {taskDetails.error && (
+                  <div className="task-field error-field">
+                    <span className="field-label">Error:</span>
+                    <p className="field-value error-message">{taskDetails.error}</p>
+                  </div>
+                )}
+
+                {taskDetails.result && !taskDetails.error && (
+                  <div className="task-field result-field">
+                    <span className="field-label">Result:</span>
+                    <p className="field-value result-message">{taskDetails.result}</p>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
