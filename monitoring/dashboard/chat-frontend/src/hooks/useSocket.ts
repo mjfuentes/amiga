@@ -3,12 +3,29 @@ import { io, Socket } from 'socket.io-client';
 import { Message, SocketResponse } from '../types';
 
 const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || 'http://localhost:3000';
-const STORAGE_KEY = 'chat_history';
 
-// Load messages from localStorage
+// Generate unique session ID for this browser window
+// Uses sessionStorage to ensure each window/tab gets unique ID
+const getSessionId = (): string => {
+  let sessionId = sessionStorage.getItem('amiga_session_id');
+  if (!sessionId) {
+    sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    sessionStorage.setItem('amiga_session_id', sessionId);
+    console.log('Generated new session ID:', sessionId);
+  }
+  return sessionId;
+};
+
+// Session-specific storage key (unique per browser window)
+const getStorageKey = (): string => {
+  const sessionId = getSessionId();
+  return `chat_history_${sessionId}`;
+};
+
+// Load messages from sessionStorage (window-specific)
 const loadMessages = (): Message[] => {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = sessionStorage.getItem(getStorageKey());
     return stored ? JSON.parse(stored) : [];
   } catch (error) {
     console.error('Failed to load chat history:', error);
@@ -16,19 +33,19 @@ const loadMessages = (): Message[] => {
   }
 };
 
-// Save messages to localStorage
+// Save messages to sessionStorage (window-specific)
 const saveMessages = (messages: Message[]) => {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+    sessionStorage.setItem(getStorageKey(), JSON.stringify(messages));
   } catch (error) {
     console.error('Failed to save chat history:', error);
   }
 };
 
-// Clear messages from localStorage
+// Clear messages from sessionStorage
 const clearStoredMessages = () => {
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(getStorageKey());
   } catch (error) {
     console.error('Failed to clear chat history:', error);
   }
@@ -47,8 +64,12 @@ export const useSocket = (token: string | null) => {
   useEffect(() => {
     if (!token) return;
 
+    // Get unique session ID for this browser window
+    const sessionId = getSessionId();
+    console.log('Connecting with session ID:', sessionId);
+
     const newSocket = io(SOCKET_URL, {
-      auth: { token },
+      auth: { token, session_id: sessionId },
       transports: ['polling', 'websocket'],
     });
 
@@ -136,6 +157,8 @@ export const useSocket = (token: string | null) => {
       return false;
     }
 
+    const sessionId = getSessionId();
+
     try {
       const response = await fetch(`${SOCKET_URL}/api/chat/clear`, {
         method: 'POST',
@@ -143,15 +166,16 @@ export const useSocket = (token: string | null) => {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ session_id: sessionId }),
       });
 
       if (response.ok) {
-        // Clear localStorage
+        // Clear sessionStorage
         clearStoredMessages();
 
         // Clear local messages state completely
         setMessages([]);
-        console.log('Chat session cleared');
+        console.log('Chat session cleared for session:', sessionId);
         return true;
       } else {
         console.error('Failed to clear chat:', response.statusText);

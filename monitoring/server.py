@@ -349,7 +349,7 @@ def get_user_info(user_id: str) -> dict | None:
 # --- Task Execution Functions ---
 
 
-async def _execute_web_chat_task(task, user_id: str) -> None:
+async def _execute_web_chat_task(task, user_id: str, session_id: str = "default") -> None:
     """
     Execute a task created from web chat interface.
     Runs task through Claude session pool and updates task status.
@@ -358,13 +358,17 @@ async def _execute_web_chat_task(task, user_id: str) -> None:
     Args:
         task: Task object to execute
         user_id: User ID for SocketIO notifications
+        session_id: Session ID for isolated browser window notifications
     """
     try:
+        # Build room ID for isolated session
+        room_id = f"{user_id}:{session_id}"
+
         # Update task status
         await task_manager.update_task(task.task_id, status="running")
-        logger.info(f"Starting web chat task execution: {task.task_id} in {task.workspace}")
+        logger.info(f"Starting web chat task execution: {task.task_id} in {task.workspace} (session {session_id})")
 
-        # Emit task started notification
+        # Emit task started notification to specific session
         socketio.emit(
             "task_update",
             {
@@ -372,7 +376,7 @@ async def _execute_web_chat_task(task, user_id: str) -> None:
                 "status": "running",
                 "message": "Task execution started",
             },
-            room=user_id,
+            room=room_id,
         )
 
         workspace_path = Path(task.workspace)
@@ -398,7 +402,7 @@ async def _execute_web_chat_task(task, user_id: str) -> None:
             # Log to task manager
             asyncio.create_task(task_manager.log_activity(task.task_id, status_message, output_lines, save=True))
 
-            # Emit progress update to user
+            # Emit progress update to specific session
             socketio.emit(
                 "task_progress",
                 {
@@ -407,7 +411,7 @@ async def _execute_web_chat_task(task, user_id: str) -> None:
                     "message": status_message,
                     "elapsed_seconds": elapsed_seconds,
                 },
-                room=user_id,
+                room=room_id,
             )
 
         # Execute using Claude session pool
@@ -427,7 +431,7 @@ async def _execute_web_chat_task(task, user_id: str) -> None:
             await task_manager.update_task(task.task_id, status="completed", result=result, workflow=workflow)
             logger.info(f"Task {task.task_id} completed successfully")
 
-            # Notify user of completion
+            # Notify user of completion in specific session
             socketio.emit(
                 "task_complete",
                 {
@@ -436,13 +440,13 @@ async def _execute_web_chat_task(task, user_id: str) -> None:
                     "message": "Task completed successfully",
                     "result": result[:500] if result else "",  # Send preview
                 },
-                room=user_id,
+                room=room_id,
             )
         else:
             await task_manager.update_task(task.task_id, status="failed", error=result, workflow=workflow)
             logger.error(f"Task {task.task_id} failed: {result}", exc_info=True)
 
-            # Notify user of failure
+            # Notify user of failure in specific session
             socketio.emit(
                 "task_failed",
                 {
@@ -451,14 +455,14 @@ async def _execute_web_chat_task(task, user_id: str) -> None:
                     "message": "Task failed",
                     "error": result[:500] if result else "Unknown error",
                 },
-                room=user_id,
+                room=room_id,
             )
 
     except Exception as e:
         logger.error(f"Error executing web chat task {task.task_id}: {e}", exc_info=True)
         await task_manager.update_task(task.task_id, status="failed", error=str(e))
 
-        # Notify user of error
+        # Notify user of error in specific session
         socketio.emit(
             "task_failed",
             {
@@ -467,7 +471,7 @@ async def _execute_web_chat_task(task, user_id: str) -> None:
                 "message": "Task execution error",
                 "error": str(e)[:500],
             },
-            room=user_id,
+            room=room_id,
         )
 
 
@@ -479,6 +483,7 @@ def handle_connect(auth_data):
     """Client connected - verify JWT token, allow no-auth mode, or allow dashboard monitoring."""
     try:
         token = auth_data.get("token") if isinstance(auth_data, dict) else None
+        session_id = auth_data.get("session_id", "default") if isinstance(auth_data, dict) else "default"
 
         if not token:
             # Allow connection without token for dashboard monitoring (read-only)
@@ -490,7 +495,7 @@ def handle_connect(auth_data):
         if token.startswith("dummy-token-"):
             # Extract user_id from dummy token
             user_id = token.replace("dummy-token-", "")
-            logger.info(f"No-auth mode: Auto-authenticating user {user_id}")
+            logger.info(f"No-auth mode: Auto-authenticating user {user_id}, session {session_id}")
         else:
             # Real JWT token authentication
             user_id = verify_token(token)
@@ -498,12 +503,16 @@ def handle_connect(auth_data):
                 logger.warning("Connection attempt with invalid token")
                 return False
 
-        # Store user_id in Flask session
+        # Store user_id and session_id in Flask session
         session["user_id"] = user_id
-        join_room(user_id)  # Join user-specific room
+        session["session_id"] = session_id
 
-        logger.info(f"User {user_id} connected via WebSocket")
-        emit("connected", {"user_id": user_id, "message": "Connected successfully"})
+        # Join room with composite key for session isolation
+        room_id = f"{user_id}:{session_id}"
+        join_room(room_id)
+
+        logger.info(f"User {user_id}, session {session_id} connected via WebSocket")
+        emit("connected", {"user_id": user_id, "session_id": session_id, "message": "Connected successfully"})
 
     except Exception as e:
         logger.error(f"Connection error: {e}", exc_info=True)
@@ -515,33 +524,38 @@ def handle_disconnect():
     """Client disconnected."""
     try:
         user_id = session.get("user_id")
+        session_id = session.get("session_id", "default")
         if user_id:
-            leave_room(user_id)
-            logger.info(f"User {user_id} disconnected")
+            room_id = f"{user_id}:{session_id}"
+            leave_room(room_id)
+            logger.info(f"User {user_id}, session {session_id} disconnected")
     except Exception as e:
         logger.error(f"Disconnect error: {e}", exc_info=True)
 
 
-async def _handle_message_async(data, user_id: str):
+async def _handle_message_async(data, user_id: str, session_id: str = "default"):
     """Async handler for client messages."""
     if not user_id:
         socketio.emit("error", {"message": "Unauthorized - please reconnect"})
         return
 
+    # Build room ID for isolated session
+    room_id = f"{user_id}:{session_id}"
+
     message_text = data.get("message")
     if not message_text:
-        socketio.emit("error", {"message": "Empty message"}, room=user_id)
+        socketio.emit("error", {"message": "Empty message"}, room=room_id)
         return
 
     # Check if message is a command
     if message_text.strip().startswith('/'):
         command = message_text.strip()
-        
+
         # Handle commands that don't go through Claude
         if command.split()[0] in ['/status', '/stop', '/stopall', '/retry', '/view']:
-            logger.info(f"User {user_id}: Command {command[:100]}")
+            logger.info(f"User {user_id}, session {session_id}: Command {command[:100]}")
             result = await command_handler.handle_command(command, user_id)
-            
+
             # Check if we need to retry a task
             if result.get('data', {}).get('action') == 'retry':
                 task = result['data']['task']
@@ -554,21 +568,21 @@ async def _handle_message_async(data, user_id: str):
                     agent_type=task.agent_type,
                     context=task.context,
                 )
-                await agent_pool.submit(_execute_web_chat_task, new_task, user_id, priority=TaskPriority.HIGH)
+                await agent_pool.submit(_execute_web_chat_task, new_task, user_id, session_id, priority=TaskPriority.HIGH)
                 result['message'] += f" (New task #{new_task.task_id})"
-            
-            # Send command result
-            socketio.emit("command_result", result, room=user_id)
+
+            # Send command result to specific session
+            socketio.emit("command_result", result, room=room_id)
             return
 
-        logger.info(f"User {user_id}: {message_text[:100]}")
+        logger.info(f"User {user_id}, session {session_id}: {message_text[:100]}")
 
-    # Get session history
-    session_obj = session_manager.get_or_create_session(user_id)
+    # Get session history (isolated per browser window)
+    session_obj = session_manager.get_or_create_session(user_id, session_id)
     history = [{"role": msg.role, "content": msg.content} for msg in session_obj.history[-10:]]  # Last 10 messages
 
     # Add user message to history
-    session_manager.add_message(user_id, "user", message_text)
+    session_manager.add_message(user_id, "user", message_text, session_id)
 
     # Import here to avoid circular dependency
     from claude.api_client import ask_claude
@@ -579,7 +593,7 @@ async def _handle_message_async(data, user_id: str):
         user_query=message_text,
         input_method="text",
         conversation_history=history,
-        current_workspace=session_manager.get_workspace(user_id) or workspace_path,
+        current_workspace=session_manager.get_workspace(user_id, session_id) or workspace_path,
         bot_repository=BOT_REPOSITORY,
         workspace_path=workspace_path,
         available_repositories=discover_repositories(workspace_path) if workspace_path else [],
@@ -607,7 +621,7 @@ async def _handle_message_async(data, user_id: str):
         )
 
     # Add assistant response to history
-    session_manager.add_message(user_id, "assistant", response)
+    session_manager.add_message(user_id, "assistant", response, session_id)
 
     # Check if background task needed
     if background_task_info:
@@ -615,7 +629,7 @@ async def _handle_message_async(data, user_id: str):
         task_params = {
             "user_id": user_id,
             "description": background_task_info["description"],
-            "workspace": session_manager.get_workspace(user_id) or BOT_REPOSITORY,
+            "workspace": session_manager.get_workspace(user_id, session_id) or BOT_REPOSITORY,
         }
 
         # Add optional parameters if provided
@@ -636,10 +650,10 @@ async def _handle_message_async(data, user_id: str):
 
         task = await task_manager.create_task(**task_params)
 
-        logger.info(f"Created task {task.task_id} for user {user_id}")
+        logger.info(f"Created task {task.task_id} for user {user_id}, session {session_id}")
 
         # Submit task to agent pool (same as Telegram bot)
-        await agent_pool.submit(_execute_web_chat_task, task, user_id, priority=TaskPriority.HIGH)
+        await agent_pool.submit(_execute_web_chat_task, task, user_id, session_id, priority=TaskPriority.HIGH)
         logger.info(f"Submitted task {task.task_id} to agent pool for execution")
 
         # Always append task number to the user message
@@ -647,7 +661,7 @@ async def _handle_message_async(data, user_id: str):
         if f"#{task.task_id}" not in user_message and f"Task {task.task_id}" not in user_message:
             user_message = f"{user_message} (Task #{task.task_id})"
 
-        # Notify user
+        # Notify user in their specific session
         socketio.emit(
             "response",
             {
@@ -655,19 +669,20 @@ async def _handle_message_async(data, user_id: str):
                 "task_id": task.task_id,
                 "type": "task_started",
             },
-            room=user_id,
+            room=room_id,
         )
     else:
-        # Direct response
-        socketio.emit("response", {"message": response, "type": "direct"}, room=user_id)
+        # Direct response to specific session
+        socketio.emit("response", {"message": response, "type": "direct"}, room=room_id)
 
 
 @socketio.on("message")
 def handle_message(data):
     """Client sent a message - sync wrapper for async handler."""
     try:
-        # Get user_id from Flask session BEFORE entering async context
+        # Get user_id and session_id from Flask session BEFORE entering async context
         user_id = session.get("user_id")
+        session_id = session.get("session_id", "default")
         if not user_id:
             emit("error", {"message": "Unauthorized - please reconnect"})
             return
@@ -680,13 +695,15 @@ def handle_message(data):
             return
 
         # Schedule coroutine in agent pool's event loop and wait for result
-        future = asyncio.run_coroutine_threadsafe(_handle_message_async(data, user_id), _agent_pool_loop)
+        future = asyncio.run_coroutine_threadsafe(_handle_message_async(data, user_id, session_id), _agent_pool_loop)
         future.result(timeout=300)  # 5 min timeout
     except Exception as e:
         logger.error(f"Error handling message: {e}", exc_info=True)
         user_id = session.get("user_id")
+        session_id = session.get("session_id", "default")
         if user_id:
-            socketio.emit("error", {"message": f"Error processing message: {str(e)}"}, room=user_id)
+            room_id = f"{user_id}:{session_id}"
+            socketio.emit("error", {"message": f"Error processing message: {str(e)}"}, room=room_id)
         else:
             emit("error", {"message": f"Error processing message: {str(e)}"})
 
@@ -918,7 +935,7 @@ def chat_history():
 
 @app.route("/api/chat/clear", methods=["POST"])
 def chat_clear():
-    """Clear chat history for authenticated user."""
+    """Clear chat history for authenticated user and specific session."""
     try:
         token = request.headers.get("Authorization", "").replace("Bearer ", "")
         logger.info(f"Clear chat request with token: {token[:20]}...")
@@ -929,10 +946,16 @@ def chat_clear():
             logger.warning(f"Authorization failed for token: {token[:20]}...")
             return jsonify({"error": "Unauthorized"}), 401
 
-        session_manager.clear_session(user_id)
+        # Get session_id from request body
+        data = request.get_json() or {}
+        session_id = data.get("session_id", "default")
 
-        # Emit clear_chat event to frontend via WebSocket
-        socketio.emit('clear_chat', {'success': True}, room=str(user_id))
+        logger.info(f"Clearing session for user {user_id}, session {session_id}")
+        session_manager.clear_session(user_id, session_id)
+
+        # Emit clear_chat event to specific session via WebSocket
+        room_id = f"{user_id}:{session_id}"
+        socketio.emit('clear_chat', {'success': True}, room=room_id)
 
         return jsonify({"success": True})
 
