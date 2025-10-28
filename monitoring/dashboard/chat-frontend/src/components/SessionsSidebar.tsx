@@ -245,10 +245,14 @@ export const SessionsSidebar: React.FC<SessionsSidebarProps> = ({ visible }) => 
                       {status}
                     </span>
                   </div>
-                  <div className="session-meta">
+                  <div className="session-info">
                     <span className="session-tools">
                       {session.total_tools} {session.total_tools === 1 ? 'tool' : 'tools'}
+                      {session.blocked > 0 && ` • ${session.blocked} blocked`}
                     </span>
+                  </div>
+                  <div className="session-meta">
+                    <span className="session-agent">claude-code</span>
                     <span className="session-time">{formatTimestamp(session.last_activity)}</span>
                   </div>
                   {session.errors > 0 && (
