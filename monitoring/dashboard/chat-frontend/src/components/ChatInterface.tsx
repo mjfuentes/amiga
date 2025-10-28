@@ -311,6 +311,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           key={`task-${taskId}-${match.index}`}
           href={`/dashboard#${urlTaskId}?ref=chat`}
           className="task-link"
+          data-status={status || 'running'}
           onClick={(e) => {
             e.preventDefault();
             // Navigate to monitoring dashboard with task highlighted
@@ -617,6 +618,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                                     <a
                                       href={`/dashboard#${urlTaskId}?ref=chat`}
                                       className="task-link inline-code"
+                                      data-status={status || 'running'}
                                       onClick={(e) => {
                                         e.preventDefault();
                                         window.location.href = `/dashboard#${urlTaskId}?ref=chat`;

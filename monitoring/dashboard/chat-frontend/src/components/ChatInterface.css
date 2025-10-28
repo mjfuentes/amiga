@@ -537,22 +537,39 @@
 
 /* Task link styling */
 .message-content a.task-link {
-  color: #e07856;
+  color: #3b82f6; /* Blue for running (default) */
   font-weight: 600;
   padding: 0.125rem 0.25rem;
   border-radius: 3px;
-  background: rgba(224, 120, 86, 0.1);
-  border-bottom: 1px solid rgba(224, 120, 86, 0.3);
+  background: rgba(59, 130, 246, 0.1);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.3);
   transition: all 0.2s ease;
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
 }
 
+/* Task link status colors */
+.message-content a.task-link[data-status="running"] {
+  color: #3b82f6; /* Blue */
+  background: rgba(59, 130, 246, 0.1);
+  border-bottom-color: rgba(59, 130, 246, 0.3);
+}
+
+.message-content a.task-link[data-status="completed"] {
+  color: #10b981; /* Green */
+  background: rgba(16, 185, 129, 0.1);
+  border-bottom-color: rgba(16, 185, 129, 0.3);
+}
+
+.message-content a.task-link[data-status="failed"] {
+  color: #ef4444; /* Red */
+  background: rgba(239, 68, 68, 0.1);
+  border-bottom-color: rgba(239, 68, 68, 0.3);
+}
+
 .message-content a.task-link:hover {
-  color: #ff9472;
-  background: rgba(224, 120, 86, 0.2);
-  border-bottom-color: #ff9472;
+  opacity: 0.8;
   transform: translateY(-1px);
 }
 
