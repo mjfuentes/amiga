@@ -197,14 +197,41 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
 
   if (!visible) return null;
 
-  // Filter tasks based on selected filter
-  const filteredTasks = tasks.filter((task) => {
-    if (filter === 'active') {
-      return task.status === 'running' || task.status === 'pending';
-    } else {
-      return task.status === 'completed' || task.status === 'failed' || task.status === 'stopped';
+  // Helper function to get the most recent activity timestamp for a task
+  const getLastActivityTimestamp = (task: Task): number => {
+    // Start with updated_at timestamp
+    let latestTimestamp = new Date(task.updated_at.replace(' ', 'T')).getTime();
+
+    // Check if there's any tool usage with a more recent timestamp
+    if (task.tool_usage && task.tool_usage.length > 0) {
+      const lastToolTimestamp = new Date(
+        task.tool_usage[task.tool_usage.length - 1].timestamp.replace(' ', 'T')
+      ).getTime();
+
+      // Use the most recent timestamp between updated_at and last tool usage
+      latestTimestamp = Math.max(latestTimestamp, lastToolTimestamp);
     }
-  });
+
+    return latestTimestamp;
+  };
+
+  // Filter tasks based on selected filter
+  const filteredTasks = tasks
+    .filter((task) => {
+      if (filter === 'active') {
+        return task.status === 'running' || task.status === 'pending';
+      } else {
+        return task.status === 'completed' || task.status === 'failed' || task.status === 'stopped';
+      }
+    })
+    .sort((a, b) => {
+      // Sort completed tasks by most recent activity (descending - newest first)
+      if (filter === 'completed') {
+        return getLastActivityTimestamp(b) - getLastActivityTimestamp(a);
+      }
+      // Keep original order for active tasks
+      return 0;
+    });
 
   // Calculate counts from full task list (not filtered)
   const activeCount = tasks.filter(t => t.status === 'running' || t.status === 'pending').length;
