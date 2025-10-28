@@ -158,7 +158,8 @@ IMPLEMENTATION INSTRUCTIONS:
 - Include docstrings
 - CRITICAL: Write tests in tests/test_<module>.py (MANDATORY)
 - Run pytest to verify tests pass
-- CRITICAL: Commit changes with descriptive message
+- CRITICAL: Commit changes with descriptive message INCLUDING task ID
+  Format: "Brief description (task: $TASK_ID)"
 ```
 
 ### Step 3: Frontend Implementation
@@ -180,7 +181,8 @@ IMPLEMENTATION INSTRUCTIONS:
 - Commit to this branch, git-merge agent will merge to main later
 - Use responsive design and accessibility best practices
 - CRITICAL: After changes, run ./deploy.sh chat to deploy
-- CRITICAL: Commit changes with descriptive message
+- CRITICAL: Commit changes with descriptive message INCLUDING task ID
+  Format: "Brief description (task: $TASK_ID)"
 ```
 
 ### Step 4: Research & Architecture (Optional)
