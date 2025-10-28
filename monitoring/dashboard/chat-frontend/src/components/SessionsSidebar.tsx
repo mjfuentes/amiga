@@ -13,6 +13,19 @@ interface SessionsSidebarProps {
   visible: boolean;
 }
 
+/**
+ * SessionsSidebar Component
+ * =========================
+ *
+ * Displays recent Claude Code CLI sessions with tool usage stats.
+ *
+ * VISIBILITY BEHAVIOR (Progressive Reveal Pattern):
+ * - Hidden on landing page (home screen with centered input)
+ * - Appears when user types anything into input box (chatViewActive=true)
+ * - Controlled by App.tsx via `visible` prop
+ *
+ * See docs/CHAT_INTERFACE_UX.md for complete navigation pattern documentation.
+ */
 export const SessionsSidebar: React.FC<SessionsSidebarProps> = ({ visible }) => {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [connected, setConnected] = useState(false);
