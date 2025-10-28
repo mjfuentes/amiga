@@ -12,7 +12,8 @@ import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import toast, { Toaster } from 'react-hot-toast';
-import { Message as MessageType } from '../types';
+import { Message as MessageType, TodoItem, ToolCall } from '../types';
+import { TodoList } from './TodoList';
 import './ChatInterface.css';
 
 interface Task {
@@ -61,6 +62,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const inputListenerAttachedRef = useRef(false);
   const handleSendRef = useRef<((message: string) => Promise<void>) | null>(null);
   const lastUserMessageRef = useRef<HTMLDivElement | null>(null);
+  const cursorPositionRef = useRef<number | null>(null);
 
   // Helper function to focus the input
   const focusInput = () => {
@@ -101,6 +103,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       const handleInput = (e: Event) => {
         const target = e.target as HTMLTextAreaElement;
         const value = target.value || target.textContent || '';
+        // Store cursor position before state update
+        cursorPositionRef.current = target.selectionStart;
         handleInputChange(value);
       };
 
@@ -161,6 +165,21 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }, 100);
     return () => clearTimeout(timer);
   }, [attachInputListener]);
+
+  // Restore cursor position after input value changes
+  useEffect(() => {
+    if (cursorPositionRef.current !== null && inputRef.current) {
+      const position = cursorPositionRef.current;
+      // Use setTimeout to ensure DOM has updated
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.selectionStart = position;
+          inputRef.current.selectionEnd = position;
+        }
+        cursorPositionRef.current = null;
+      }, 0);
+    }
+  }, [inputValue]);
 
   // Re-focus after sending messages and handle auto-scroll
   useEffect(() => {
