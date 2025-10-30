@@ -570,12 +570,11 @@
 }
 
 .message-content a.task-link:hover {
-  opacity: 0.8;
-  transform: translateY(-1px);
+  /* No hover effect - keep default appearance for clickability */
 }
 
 .message-content a.task-link:active {
-  transform: translateY(0);
+  /* No active effect - keep default appearance for clickability */
 }
 
 /* Task status indicator dot */
