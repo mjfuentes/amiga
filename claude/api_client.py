@@ -13,6 +13,7 @@ from pathlib import Path
 import anthropic
 
 from core.exceptions import AMIGAError
+from claude.tools import AVAILABLE_TOOLS, execute_tool
 
 logger = logging.getLogger(__name__)
 
@@ -251,6 +252,18 @@ I handle two types of requests:
 • Focus areas: Your web chat interface, monitoring dashboard, and task management system
 </capabilities>
 
+<tools>
+I have access to a database query tool that lets me answer questions about your tasks, tool usage, and system activity.
+
+Available tool: query_database
+• Query the SQLite databases (agentlab, analytics) for real-time information
+• Use this AUTOMATICALLY when you ask about tasks, errors, activity, or metrics
+• Examples: "how many tasks are running?", "show recent errors", "what's my tool usage?"
+• Security: Read-only SELECT queries, 100 row limit
+
+When you ask questions about system state, I'll use this tool to get accurate real-time data instead of guessing or creating background tasks.
+</tools>
+
 <implementation_prohibition>
 CRITICAL: You are a ROUTING AGENT, NOT an implementation agent.
 
@@ -304,11 +317,18 @@ RIGHT: BACKGROUND_TASK|Fix null pointer in auth.py|Fixing the bug.|User asked: "
 </implementation_prohibition>
 
 <routing_rules>
+USE TOOLS (query_database) when:
+• Task status: "how many tasks running?", "show active tasks", "list tasks", "task status"
+• Error checking: "show errors", "recent errors", "failed tasks", "what went wrong"
+• Metrics/analytics: "tool usage", "API costs", "message count", "user activity"
+• Database queries: Questions about data that can be answered with SELECT queries
+
 DIRECT ANSWER when:
 • General knowledge: "what is X?", "how does Y work?", "explain Z"
 • Greetings/chat: "hey", "thanks", "what's up"
 • Capabilities: "what can you do?"
 • Log checking: "check logs"/"show logs"/"?" (logs in context)
+• Questions answered by tool results (after using query_database)
 
 BACKGROUND_TASK when:
 • Code analysis: "check code", "analyze", "review", "scan for issues"
@@ -318,14 +338,14 @@ BACKGROUND_TASK when:
 • Testing: "run tests", "check if X works"
 • Chat/UI changes: "make chat [like X]", "change chat [to Y]", "modify chat [behavior/style/appearance]"
 • Frontend behavior: "make [component] [do X]", "change [UI] to [Y]", "turn [feature] into [Z]"
-• Database/history operations: "check conversation history", "find unattended messages", "analyze history", "check database"
 • Task creation: "create task(s)", "create background task", "make a task for", "add task for"
-• Multi-step requests: Any request combining multiple actions (e.g., "check X and create Y", "find Z and fix W")
+• Multi-step requests with actions: Requests combining database queries with task creation (e.g., "find unattended messages and create tasks")
 
 CRITICAL: "fix X" → BACKGROUND_TASK (explaining ≠ fixing)
 CRITICAL: "make/change/modify chat" → ALWAYS BACKGROUND_TASK (DO NOT explain approaches, design choices, or suggest ideas - route immediately)
-CRITICAL: "check history/database" + "create task" → ALWAYS BACKGROUND_TASK (DO NOT analyze and respond - route immediately for action)
-Rule: File/database access needed → BACKGROUND_TASK. General knowledge → answer directly.
+CRITICAL: Database queries → USE TOOL first. If action needed after → BACKGROUND_TASK
+CRITICAL: "check X" (data) → USE TOOL. "check X" (code) → BACKGROUND_TASK
+Rule: Database queries → USE TOOL. File/code access → BACKGROUND_TASK. General knowledge → answer directly.
 
 AGENT ROUTING (in context_summary):
 • Frontend-specific tasks (HTML/CSS/JS/UI) → "use frontend-agent to [task]"
@@ -402,7 +422,12 @@ context_summary: "use orchestrator to create admin dashboard with metrics. User 
 </background_task_format>
 
 <examples>
-GOOD:
+GOOD (Tool usage):
+• "how many tasks are running?" → USE TOOL query_database(query="SELECT COUNT(*) FROM tasks WHERE status='running'", database="agentlab") → "You have 3 tasks currently running."
+• "show recent errors" → USE TOOL query_database(query="SELECT task_id, error FROM tasks WHERE error IS NOT NULL ORDER BY updated_at DESC LIMIT 5", database="agentlab") → [List errors with task IDs]
+• "what's my tool usage?" → USE TOOL query_database(query="SELECT tool_name, COUNT(*) as count FROM tool_usage GROUP BY tool_name ORDER BY count DESC LIMIT 10", database="agentlab") → [Tool usage stats]
+
+GOOD (Background tasks):
 • "fix bug in main.py" → BACKGROUND_TASK|Fix bug in main.py|Fixing the bug.|User asked: "fix bug in main.py". Working in amiga repo.
 • "persist conversation in /chat" → BACKGROUND_TASK|Persist conversation in /chat frontend|Working on chat persistence.|use frontend-agent to persist conversation during session in /chat frontend. User asked: "persist conversation during session in /chat frontend". Working in amiga repo.
 • "make chat like a command line, 90s like" → BACKGROUND_TASK|Modify chat interface to Matrix-style command line (90s hacker aesthetic)|Updating chat UI to retro terminal style.|use frontend-agent to make chat like a command line, 90s like, like neo talking to morpheo in matrix. User asked: "make chat like a command line, 90s like, like neo talking to morpheo in matrix". Working in amiga repo.
@@ -410,9 +435,15 @@ GOOD:
 • "add metrics graph to dashboard" → BACKGROUND_TASK|Add metrics visualization to monitoring dashboard|Adding graph to dashboard.|use frontend-agent to add metrics graph to dashboard. User asked: "add metrics graph to dashboard". Working in amiga repo.
 • "build authentication system" → BACKGROUND_TASK|Build authentication system with JWT|Building authentication system.|use orchestrator to build authentication system. User asked: "build authentication system with JWT tokens". Multi-component task: backend models, API endpoints, middleware. Working in amiga repo.
 • "create admin dashboard" → BACKGROUND_TASK|Create admin dashboard with user metrics|Building admin dashboard.|use orchestrator to create admin dashboard with metrics. User asked: "create admin dashboard with user metrics and analytics". Backend + frontend + API integration needed. Working in amiga repo.
-• "check conversation history, find unattended messages, create tasks" → BACKGROUND_TASK|Analyze conversation history for unattended messages and create tasks|Checking history for unattended messages.|User asked: "check the conversation history, find unattended messages due to claude unavailable, create tasks for unique ones". Requires database access and task creation. Working in amiga repo.
+
+GOOD (Direct answers):
 • "what is asyncio?" → [Direct answer about asyncio]
 • "check logs" → [Direct log summary from context]
+
+BAD (tool usage violations):
+• "how many tasks?" → Creating BACKGROUND_TASK instead of using query_database tool
+• "show errors" → Guessing/making up data instead of querying database
+• "task status" → Responding "I don't have access" when query_database tool is available
 
 BAD (routing violations):
 • Wrapping in ```BACKGROUND_TASK|...|...|...```
@@ -564,72 +595,115 @@ current_workspace: {safe_workspace}
 
         logger.info(f"Calling Claude API (Haiku 4.5) for: {user_query[:60]}...")
 
-        # Call API with Haiku 4.5 (fast and cheap - launched Oct 15, 2025)
-        response = client.messages.create(
-            model="claude-haiku-4-5", max_tokens=2048, system=system_prompt, messages=messages
-        )
+        # Tool calling loop
+        usage_info = {"input_tokens": 0, "output_tokens": 0}
+        max_iterations = 5  # Prevent infinite loops
+        iteration = 0
 
-        # Extract response text
-        response_text = response.content[0].text.strip()
+        while iteration < max_iterations:
+            iteration += 1
 
-        # Extract usage info
-        usage_info = {
-            "input_tokens": response.usage.input_tokens,
-            "output_tokens": response.usage.output_tokens,
-        }
+            # Call API with Haiku 4.5 and tools
+            response = client.messages.create(
+                model="claude-haiku-4-5", max_tokens=2048, system=system_prompt, messages=messages, tools=AVAILABLE_TOOLS
+            )
 
-        logger.info(
-            f"Claude API response: {response_text[:100]}... (tokens: {usage_info['input_tokens']} in, {usage_info['output_tokens']} out)"
-        )
+            # Accumulate usage
+            usage_info["input_tokens"] += response.usage.input_tokens
+            usage_info["output_tokens"] += response.usage.output_tokens
 
-        # Check if response contains BACKGROUND_TASK anywhere (not just at start)
-        if "BACKGROUND_TASK|" in response_text:
-            # Find the line with BACKGROUND_TASK
-            lines = response_text.split("\n")
-            task_line = None
+            logger.info(
+                f"Claude API response (iteration {iteration}): {len(response.content)} blocks (tokens: {response.usage.input_tokens} in, {response.usage.output_tokens} out)"
+            )
 
-            for line in lines:
-                cleaned_line = line.strip()
-                # Strip markdown code blocks if present
-                if cleaned_line.startswith("```"):
-                    cleaned_line = cleaned_line[3:].strip()
-                if cleaned_line.endswith("```"):
-                    cleaned_line = cleaned_line[:-3].strip()
+            # Check for tool use in response
+            tool_uses = [block for block in response.content if block.type == "tool_use"]
 
-                if cleaned_line.startswith("BACKGROUND_TASK|"):
-                    task_line = cleaned_line
-                    break
+            if not tool_uses:
+                # No tools needed - extract final response text
+                response_text = ""
+                for block in response.content:
+                    if block.type == "text":
+                        response_text += block.text
 
-            if task_line:
-                # Parse the BACKGROUND_TASK line
-                # Format: BACKGROUND_TASK|task_description|user_message|context_summary
-                parts = task_line.split("|")
+                response_text = response_text.strip()
 
-                if len(parts) == 4:
-                    _, task_description, user_message, context_summary = parts
-                    background_task = {
-                        "description": task_description.strip(),
-                        "user_message": user_message.strip(),
-                        "context": context_summary.strip(),
-                    }
-                    return task_line, background_task, usage_info
-                elif len(parts) == 3:
-                    # Backwards compatibility - old format without context
-                    _, task_description, user_message = parts
-                    background_task = {
-                        "description": task_description.strip(),
-                        "user_message": user_message.strip(),
-                        "context": None,
-                    }
-                    logger.warning(f"BACKGROUND_TASK missing context field: {task_line}")
-                    return task_line, background_task, usage_info
-                else:
-                    logger.warning(f"Invalid BACKGROUND_TASK format: {task_line}")
-                    # Treat as direct answer if format is invalid
-                    pass
+                logger.info(f"Final response: {response_text[:100]}... (total tokens: {usage_info['input_tokens']} in, {usage_info['output_tokens']} out)")
 
-        # Direct answer
-        return response_text, None, usage_info
+                # Check if response contains BACKGROUND_TASK anywhere (not just at start)
+                if "BACKGROUND_TASK|" in response_text:
+                    # Find the line with BACKGROUND_TASK
+                    lines = response_text.split("\n")
+                    task_line = None
+
+                    for line in lines:
+                        cleaned_line = line.strip()
+                        # Strip markdown code blocks if present
+                        if cleaned_line.startswith("```"):
+                            cleaned_line = cleaned_line[3:].strip()
+                        if cleaned_line.endswith("```"):
+                            cleaned_line = cleaned_line[:-3].strip()
+
+                        if cleaned_line.startswith("BACKGROUND_TASK|"):
+                            task_line = cleaned_line
+                            break
+
+                    if task_line:
+                        # Parse the BACKGROUND_TASK line
+                        # Format: BACKGROUND_TASK|task_description|user_message|context_summary
+                        parts = task_line.split("|")
+
+                        if len(parts) == 4:
+                            _, task_description, user_message, context_summary = parts
+                            background_task = {
+                                "description": task_description.strip(),
+                                "user_message": user_message.strip(),
+                                "context": context_summary.strip(),
+                            }
+                            return task_line, background_task, usage_info
+                        elif len(parts) == 3:
+                            # Backwards compatibility - old format without context
+                            _, task_description, user_message = parts
+                            background_task = {
+                                "description": task_description.strip(),
+                                "user_message": user_message.strip(),
+                                "context": None,
+                            }
+                            logger.warning(f"BACKGROUND_TASK missing context field: {task_line}")
+                            return task_line, background_task, usage_info
+                        else:
+                            logger.warning(f"Invalid BACKGROUND_TASK format: {task_line}")
+                            # Treat as direct answer if format is invalid
+                            pass
+
+                # Direct answer
+                return response_text, None, usage_info
+
+            # Tools needed - execute them
+            logger.info(f"Executing {len(tool_uses)} tool(s)...")
+
+            tool_results = []
+            for tool_use in tool_uses:
+                logger.info(f"Tool: {tool_use.name} with input: {str(tool_use.input)[:100]}")
+
+                # Execute tool
+                result = await execute_tool(tool_use.name, tool_use.input)
+
+                tool_results.append({"type": "tool_result", "tool_use_id": tool_use.id, "content": result})
+
+                logger.info(f"Tool result: {result[:200]}...")
+
+            # Add assistant message with tool_use blocks to conversation
+            messages.append({"role": "assistant", "content": response.content})
+
+            # Add tool results as user message
+            messages.append({"role": "user", "content": tool_results})
+
+            # Loop back to get final response with tool results
+
+        # Max iterations reached
+        logger.warning(f"Tool calling loop reached max iterations ({max_iterations})")
+        return "Unable to complete request - too many tool calls needed.", None, usage_info
 
     except anthropic.APIError as e:
         # Parse Anthropic API errors for user-friendly messages
