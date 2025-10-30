@@ -39,7 +39,9 @@ class Database:
 
         self.db_path.parent.mkdir(exist_ok=True)
 
-        self.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+        # Each thread gets its own connection (via thread-local storage in database_manager.py)
+        # No need for check_same_thread=False - SQLite's safety checks work correctly
+        self.conn = sqlite3.connect(str(self.db_path))
         self.conn.row_factory = sqlite3.Row  # Enable column access by name
 
         # Lock for serializing write operations in async environment
