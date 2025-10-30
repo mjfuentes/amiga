@@ -32,14 +32,8 @@ export const TokenIndicator: React.FC<TokenIndicatorProps> = ({ totalTokens }) =
   };
 
   return (
-    <div className={`token-indicator ${getWarningClass()}`}>
-      <div className="token-icon">🔢</div>
-      <div className="token-details">
-        <div className="token-count">
-          {formatNumber(contextTokens)} <span className="token-separator">/</span> {formatNumber(MAX_TOKENS)}
-        </div>
-        <div className="token-label">tokens</div>
-      </div>
+    <div className={`token-indicator ${getWarningClass()}`} title={`${formatNumber(contextTokens)} / ${formatNumber(MAX_TOKENS)} tokens`}>
+      🔢 {formatNumber(contextTokens)}<span className="token-separator">/</span>{formatNumber(MAX_TOKENS)}
     </div>
   );
 };
