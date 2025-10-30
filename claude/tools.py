@@ -53,9 +53,39 @@ Security: Only SELECT queries allowed. Results limited to 100 rows.""",
     },
 }
 
+WEBSEARCH_TOOL = {
+    "name": "web_search",
+    "description": """Search the web for current information, documentation, or answers to questions that require up-to-date data.
+
+Use this tool when:
+- User asks about current events, recent releases, or time-sensitive information
+- Looking up documentation, API references, or technical specifications
+- Finding latest versions, compatibility info, or release notes
+- Researching libraries, frameworks, or tools
+- Getting real-world examples or usage patterns
+
+The search will return relevant web results with titles, URLs, and snippets.""",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "Search query to execute. Be specific and include relevant keywords.",
+            },
+            "num_results": {
+                "type": "integer",
+                "description": "Number of results to return (default: 5, max: 10)",
+                "minimum": 1,
+                "maximum": 10,
+            },
+        },
+        "required": ["query"],
+    },
+}
+
 
 # All available tools
-AVAILABLE_TOOLS = [SQLITE_TOOL]
+AVAILABLE_TOOLS = [SQLITE_TOOL, WEBSEARCH_TOOL]
 
 
 def _validate_select_query(query: str) -> tuple[bool, str | None]:
@@ -158,6 +188,58 @@ async def execute_sqlite_query(query: str, database: str, parameters: list[Any] 
         return json.dumps({"success": False, "error": f"Unexpected error: {str(e)}", "row_count": 0, "results": []})
 
 
+async def execute_websearch(query: str, num_results: int = 5) -> str:
+    """
+    Execute web search using DuckDuckGo.
+
+    Args:
+        query: Search query
+        num_results: Number of results to return (max 10)
+
+    Returns:
+        JSON string with results or error
+    """
+    try:
+        from ddgs import DDGS
+
+        num_results = min(num_results, 10)  # Cap at 10
+
+        logger.info(f"Executing web search: {query[:100]}... (requesting {num_results} results)")
+
+        # Execute search
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=num_results))
+
+        # Format results
+        formatted_results = []
+        for result in results:
+            formatted_results.append(
+                {
+                    "title": result.get("title", ""),
+                    "url": result.get("href", ""),
+                    "snippet": result.get("body", ""),
+                }
+            )
+
+        logger.info(f"Web search returned {len(formatted_results)} results")
+
+        return json.dumps({"success": True, "result_count": len(formatted_results), "results": formatted_results})
+
+    except ImportError:
+        logger.error("ddgs library not installed")
+        return json.dumps(
+            {
+                "success": False,
+                "error": "Web search library not available. Install with: pip install ddgs",
+                "result_count": 0,
+                "results": [],
+            }
+        )
+    except Exception as e:
+        logger.error(f"Web search error: {e}", exc_info=True)
+        return json.dumps({"success": False, "error": f"Search error: {str(e)}", "result_count": 0, "results": []})
+
+
 async def execute_tool(tool_name: str, tool_input: dict[str, Any]) -> str:
     """
     Execute a tool by name with given input.
@@ -174,6 +256,10 @@ async def execute_tool(tool_name: str, tool_input: dict[str, Any]) -> str:
             query=tool_input.get("query", ""),
             database=tool_input.get("database", "agentlab"),
             parameters=tool_input.get("parameters"),
+        )
+    elif tool_name == "web_search":
+        return await execute_websearch(
+            query=tool_input.get("query", ""), num_results=tool_input.get("num_results", 5)
         )
     else:
         logger.error(f"Unknown tool requested: {tool_name}")
