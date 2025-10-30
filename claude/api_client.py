@@ -261,7 +261,7 @@ Available tools:
 • Query the SQLite databases (agentlab, analytics) for real-time information
 • Use this AUTOMATICALLY when you ask about tasks, errors, activity, or metrics
 • Examples: "how many tasks are running?", "show recent errors", "what's my tool usage?"
-• Security: Read-only SELECT queries, 100 row limit
+• Security: Read-only SELECT queries
 
 2. web_search
 • Search the web for current information, documentation, or technical specifications
