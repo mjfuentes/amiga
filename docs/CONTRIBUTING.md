@@ -21,19 +21,20 @@ Before you begin, ensure you have:
 - Python 3.12 or higher
 - [Claude Code CLI](https://docs.claude.com/claude-code) installed
 - Anthropic API key
-- Telegram account
+- Node.js and npm (for frontend development)
 - jq (JSON processor) - `brew install jq` on macOS
+- SQLite (for database queries)
 
 ### Fork and Clone
 
 ```bash
 # Fork the repository on GitHub
 # Clone your fork
-git clone https://github.com/YOUR_USERNAME/agentlab.git
-cd agentlab
+git clone https://github.com/YOUR_USERNAME/amiga.git
+cd amiga
 
 # Add upstream remote
-git remote add upstream https://github.com/ORIGINAL_OWNER/agentlab.git
+git remote add upstream https://github.com/ORIGINAL_OWNER/amiga.git
 ```
 
 ### Development Environment Setup
@@ -52,36 +53,48 @@ pre-commit install
 # Configure environment
 cp .env.example .env
 # Edit .env with your credentials:
-# - TELEGRAM_BOT_TOKEN (from @BotFather)
 # - ANTHROPIC_API_KEY (from Anthropic Console)
-# - ALLOWED_USERS (your Telegram user ID from @userinfobot)
+# - WORKSPACE_PATH (path to your workspace directory)
+# Optional:
+# - DAILY_COST_LIMIT (default: $100/day)
+# - MONTHLY_COST_LIMIT (default: $1000/month)
 ```
 
-### Running the Bot Locally
+### Running AMIGA Locally
 
+```bash
+# Deploy and start services (recommended)
+./deploy.sh chat
+
+# Access the application:
+# - Chat Interface: http://localhost:3000
+# - Monitoring Dashboard: http://localhost:3000/dashboard
+
+# View logs
+tail -f logs/monitoring.log
+```
+
+**Alternative (manual development mode)**:
 ```bash
 # Activate virtual environment
 source venv/bin/activate
 
-# Run the bot
-python telegram_bot/main.py
-
-# In a separate terminal, run the monitoring dashboard (optional)
-python telegram_bot/monitoring_server.py
-# Open http://localhost:3000
+# Run monitoring server (includes chat interface)
+python monitoring/server.py
+# Access: http://localhost:3000
 ```
 
 ### Running Tests
 
 ```bash
 # Run all tests
-pytest telegram_bot/tests/ -v
+pytest tests/ -v
 
 # Run specific test file
-pytest telegram_bot/tests/test_formatter.py -v
+pytest tests/test_formatter.py -v
 
 # Run with coverage report
-pytest telegram_bot/tests/ --cov=telegram_bot --cov-report=html
+pytest tests/ --cov=. --cov-report=html
 open htmlcov/index.html  # View coverage report
 ```
 
@@ -212,8 +225,9 @@ If hooks fail:
 
 ### Coverage Targets
 
-- **Critical paths**: 70% minimum coverage
-- **Utility functions**: 80%+ coverage recommended
+- **Overall project**: 70%+ coverage
+- **Critical paths**: 80%+ coverage
+- **Utility functions**: 100% coverage recommended
 - **Handlers**: Best effort (harder to test, but try)
 
 ### Testing Workflow
@@ -221,18 +235,18 @@ If hooks fail:
 **Every contribution MUST follow this workflow:**
 
 1. **Implement** your feature or fix
-2. **Write tests** in `telegram_bot/tests/test_<module>.py`
+2. **Write tests** in `tests/test_<module>.py`
 3. **Run tests** and fix failures:
    ```bash
-   pytest telegram_bot/tests/test_<module>.py -v
+   pytest tests/test_<module>.py -v
    ```
 4. **Run full suite** to ensure no regressions:
    ```bash
-   pytest telegram_bot/tests/
+   pytest tests/
    ```
 5. **Check coverage** (optional but recommended):
    ```bash
-   pytest telegram_bot/tests/ --cov=telegram_bot --cov-report=term-missing
+   pytest tests/ --cov=. --cov-report=term-missing
    ```
 6. **Commit implementation + tests together**
 
@@ -290,6 +304,8 @@ class TestFeatureName:
 - Contributions without tests will be rejected
 - Failing tests block merging
 - Pre-commit hooks enforce test execution
+- **Agent enforcement**: `code_agent` MUST write tests before committing
+- **Validation enforcement**: `task-completion-validator` REJECTS implementations without tests or with failing tests
 
 ## Pull Request Process
 
@@ -303,7 +319,7 @@ class TestFeatureName:
 
 2. **Run full test suite**:
    ```bash
-   pytest telegram_bot/tests/ -v
+   pytest tests/ -v
    ```
 
 3. **Run pre-commit on all files**:
@@ -312,8 +328,8 @@ class TestFeatureName:
    ```
 
 4. **Verify your changes work**:
-   - Test manually with the bot
-   - Check monitoring dashboard for errors
+   - Test manually with the chat interface (http://localhost:3000)
+   - Check monitoring dashboard for errors (http://localhost:3000/dashboard)
    - Review logs for unexpected behavior
 
 ### PR Description Template
@@ -340,7 +356,7 @@ Why is this change needed? What problem does it solve?
 - [ ] Added unit tests for new functionality
 - [ ] Added integration tests for workflows
 - [ ] All tests pass locally
-- [ ] Manually tested with running bot
+- [ ] Manually tested with chat interface
 - [ ] Checked monitoring dashboard for errors
 
 ## Screenshots (if UI changes)
@@ -387,31 +403,214 @@ Maintainers will choose the appropriate strategy based on your commit history.
 ### File Organization
 
 ```
-telegram_bot/
-├── tests/              # All test files go here
+amiga/
+├── core/                # Core bot functionality
+│   ├── main.py          # Entry point - bot setup, command handlers
+│   ├── routing.py       # Message routing logic
+│   ├── session.py       # Conversation history management
+│   ├── config.py        # Configuration management
+│   └── orchestrator.py  # Task orchestration
+├── claude/              # Claude AI integration
+│   ├── api_client.py    # Claude API (Haiku - Q&A routing)
+│   └── code_cli.py      # Claude Code CLI sessions (Sonnet - coding)
+├── monitoring/          # Dashboard & metrics
+│   ├── server.py        # Web server (Flask + WebSocket)
+│   ├── metrics.py       # Real-time metrics from hooks
+│   ├── hooks_reader.py  # Hook data parsing
+│   └── dashboard/       # React chat UI (TypeScript)
+│       ├── src/         # Source files (*.tsx, *.css)
+│       ├── build/       # Build output (npm run build)
+│       └── deploy.sh    # Deploy script (build → static/chat)
+├── tasks/               # Task management
+│   ├── manager.py       # Background task tracking
+│   ├── pool.py          # Bounded worker pool
+│   ├── database.py      # Database operations
+│   └── tracker.py       # Tool usage tracking
+├── utils/               # Shared utilities
+│   ├── git.py           # Git operations
+│   ├── helpers.py       # General helpers
+│   └── worktree.py      # Git worktree management
+├── tests/               # Test suite (pytest)
 │   ├── __init__.py
-│   ├── conftest.py     # pytest configuration
-│   └── test_*.py       # Test modules
-├── docs/               # Module-specific documentation
-│   └── *.md
-├── main.py             # Entry point - bot setup, command handlers
-├── claude_api.py       # Claude API integration (Haiku - Q&A)
-├── claude_interactive.py  # Claude Code CLI (Sonnet - coding)
-├── tasks.py            # Background task tracking
-├── session.py          # Conversation history
-├── message_queue.py    # Per-user message serialization
-└── formatter.py        # Telegram message formatting
+│   ├── conftest.py      # pytest configuration
+│   └── test_*.py        # All test files
+├── scripts/             # Utility scripts
+│   └── analyze_*.py     # Analysis scripts
+├── docs/                # Documentation
+│   └── *.md             # Implementation notes, feature docs
+├── .claude/             # Claude Code configuration
+│   ├── agents/          # Agent definitions (16 specialized agents)
+│   ├── hooks/           # Tool usage tracking
+│   └── settings.local.json  # Permissions, output style
+├── data/                # Runtime state (sessions, tasks, costs)
+├── logs/                # Application logs
+├── static/              # Static assets served by Flask
+│   └── chat/            # Deployed dashboard build
+└── templates/           # Jinja templates for web UI
 ```
 
 **Rules**:
-- Test files ONLY in `telegram_bot/tests/`
+- Test files ONLY in `tests/` (project root)
 - Follow naming: `test_*.py` for pytest discovery
-- One test file per module: `test_formatter.py` tests `formatter.py`
-- Documentation in `telegram_bot/docs/`, NOT project root
+- One test file per module: `test_formatter.py` tests `messaging/formatter.py`
+- Documentation in `docs/`, NOT project root (except README.md and CLAUDE.md)
+- Analysis files in `docs/analysis/` (not project root)
+
+### Chat Frontend Development Workflow
+
+**CRITICAL**: Changes to `monitoring/dashboard/src/` require deployment to `static/chat/`.
+
+**Deployment script**: Centralized `deploy.sh` at project root
+```bash
+# From project root
+./deploy.sh chat  # Builds, deploys, and restarts all services (bot + monitoring)
+./deploy.sh       # Deploy all components + restart services
+```
+
+**What deploy.sh does**:
+- Stops launchd service if running
+- Kills existing monitoring server process
+- Builds React frontend (if chat component)
+- Deploys build to `static/chat/`
+- Restarts monitoring server (with venv Python + PYTHONPATH)
+- Verifies service started successfully
+
+**Pre-commit enforcement**: Hook `chat-frontend-deploy` blocks commits if:
+- Source files in `monitoring/dashboard/src/` modified
+- Build in `static/chat/` is outdated
+
+**Workflow**:
+1. Modify source: `monitoring/dashboard/src/*.tsx`, `*.css`
+2. Deploy: `./deploy.sh chat` (from project root)
+3. Script automatically: builds, deploys, restarts all services
+4. Hard refresh browser: Cmd+Shift+R to clear cache
+5. Commit: Pre-commit hook verifies deployment
+
+**Why this matters**:
+- Flask serves static files from `static/chat/`
+- React builds have content hashes (e.g., `main.987fad4a.css`)
+- Old builds remain cached without deployment
+- Browser caches old assets until hard refresh
+
+### Agent Architecture
+
+AMIGA uses 16 specialized agents coordinated by the orchestrator:
+
+**Core Agents**:
+- **orchestrator**: Coordinates tasks, delegates to specialized agents
+- **code_agent**: Backend implementation (Python, Sonnet 4.5)
+- **frontend_agent**: UI/UX development (HTML/CSS/JS, Sonnet 4.5) with Playwright MCP
+- **research_agent**: Analysis, proposals, web research (Opus 4.5)
+
+**Quality Assurance Agents**:
+- **Jenny**: Verifies implementation matches specifications
+- **claude-md-compliance-checker**: Ensures CLAUDE.md adherence
+- **code-quality-pragmatist**: Detects over-engineering
+- **karen**: Reality check on project completion
+- **task-completion-validator**: Validates tasks actually work
+- **ui-comprehensive-tester**: Comprehensive UI testing with Playwright MCP
+- **ultrathink-debugger**: Deep debugging (Opus 4.5 - expensive, use sparingly)
+
+**Workflow Agents**:
+- **git-worktree**: Creates/manages isolated worktrees for concurrent work
+- **git-merge**: Merges task branches to main
+
+**Self-Improvement Agent**:
+- **self-improvement-agent**: Analyzes error patterns from database, updates agent prompts based on real failures, creates tasks for code fixes
+
+**Agent Workflow Example** (Code Implementation):
+1. orchestrator receives task
+2. research_agent (if research needed)
+3. code_agent (implementation)
+4. task-completion-validator (verify it works)
+5. code-quality-pragmatist (check complexity)
+6. claude-md-compliance-checker (verify CLAUDE.md compliance)
+
+### Database & Log Access
+
+**CRITICAL**: Before starting ANY debugging task, check the database and logs for context.
+
+#### Database (SQLite)
+
+**Location**: `data/agentlab.db`
+
+**Key Tables**:
+- `tasks` - Background task tracking and status
+- `tool_usage` - Tool usage statistics with error tracking
+- `sessions` - User conversation history (if exists)
+
+**Common Queries**:
+```bash
+# Find errors in task tracking
+sqlite3 data/agentlab.db "SELECT task_id, error, updated_at FROM tasks WHERE error IS NOT NULL ORDER BY updated_at DESC LIMIT 10;"
+
+# Get tool usage summary
+sqlite3 data/agentlab.db "SELECT tool_name, COUNT(*) as count, SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as failures FROM tool_usage GROUP BY tool_name ORDER BY count DESC;"
+
+# Find hung tasks (running but stale)
+sqlite3 data/agentlab.db "SELECT task_id, status, updated_at FROM tasks WHERE status = 'running' AND julianday('now') - julianday(updated_at) > 0.042;"
+
+# Get session UUID for task (needed for log lookup)
+sqlite3 data/agentlab.db "SELECT session_uuid FROM tasks WHERE task_id = 'abc123';"
+```
+
+#### Log Files
+
+**Location**: `logs/`
+
+**Files**:
+- `logs/bot.log` - Main application log (auto-rotated)
+- `logs/monitoring.log` - Web dashboard log
+- `logs/sessions/<session_uuid>/` - Per-session Claude Code logs
+  - `pre_tool_use.jsonl` - Tool invocations
+  - `post_tool_use.jsonl` - Tool results
+  - `summary.json` - Session summary
+
+**Common Commands**:
+```bash
+# Tail main log
+tail -f logs/bot.log
+
+# Search for errors
+grep ERROR logs/bot.log | tail -50
+
+# View session logs (requires session_uuid from database)
+session_uuid=$(sqlite3 data/agentlab.db "SELECT session_uuid FROM tasks WHERE task_id = 'abc123';")
+tail -100 "logs/sessions/$session_uuid/pre_tool_use.jsonl" | jq
+```
+
+**Debugging Workflow**:
+1. Check `data/agentlab.db` (tasks table) for related tasks
+2. Check `logs/bot.log` for recent errors
+3. Get session UUID from database
+4. Check session logs in `logs/sessions/<session_uuid>/`
+5. Check `tool_usage` table for tool performance issues
+
+### Playwright MCP Integration
+
+**Purpose**: Cross-browser automation and testing for frontend development.
+
+**Installation**:
+```bash
+claude mcp add playwright npx -s user @playwright/mcp@latest -- --isolated
+```
+
+**Available to**: `frontend_agent`, `ui-comprehensive-tester`
+
+**Common Use Cases**:
+- Visual validation (screenshots for comparison)
+- Form testing (fill, submit, verify)
+- Responsive testing (desktop/tablet/mobile)
+- Accessibility validation (snapshot accessibility tree)
+
+**Screenshot Best Practices**:
+- **Always use JPEG format with quality parameter** (not PNG)
+- Recommended quality: 75-85 (balance of visual fidelity and file size)
+- PNG is 5-10x larger than JPEG for UI screenshots
 
 ### Manager Pattern Usage
 
-When refactoring `main.py` or adding complex features, use the Manager pattern:
+When refactoring `core/main.py` or adding complex features, use the Manager pattern:
 
 ```python
 class FeatureManager:
@@ -447,7 +646,7 @@ class FeatureManager:
 #### Input Sanitization
 
 ```python
-from security import (
+from utils.security import (
     sanitize_xml_content,      # HTML escape + pattern removal
     detect_prompt_injection,   # Detect prompt injection attacks
     validate_file_path         # Prevent directory traversal
@@ -481,25 +680,28 @@ User input is embedded in XML prompts sent to Claude. Unsanitized input could:
 - [ ] File paths validated against allowed directories
 - [ ] No hardcoded secrets (use environment variables)
 - [ ] API keys never logged
-- [ ] User whitelist enforced (ALLOWED_USERS)
+- [ ] Prompt injection detection active
 
 ### Cost Optimization
 
 Keep costs reasonable by:
 
 1. **Token minimization**:
-   - Conversation history: Last 2 messages only
-   - Truncate messages to 500 chars
-   - Include only essential context
+   - Conversation history: Last 20 messages, 5000 chars per message
+   - Active tasks: Max 3 tasks, omit descriptions
+   - Logs: Last 50 lines only (not 200)
+   - Don't include `available_repositories` list (~100 tokens saved)
 
 2. **Model selection**:
-   - Use Haiku 4 for Q&A (10x cheaper)
-   - Use Sonnet 4.5 for coding (more capable)
-   - Reserve Opus for complex analysis
+   - Use Haiku 4.5 for Q&A routing (10x cheaper)
+   - Use Sonnet 4.5 for coding tasks (more capable)
+   - Use Opus 4.5 for research_agent and ultrathink-debugger (most capable, most expensive)
+   - Cost-aware agent usage: Opus agents for complex analysis only
 
 3. **Caching**:
    - Cache repeated queries
    - Reuse session context
+   - Minimize redundant API calls
 
 ### Async Best Practices
 
@@ -552,11 +754,11 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 #### Feature Addition
 ```
-feat: Add voice message transcription via Whisper
+feat: Add real-time typing indicators to chat interface
 
-Integrates OpenAI Whisper API for voice-to-text transcription.
-Handles Telegram voice messages in handle_voice_message().
-Adds error handling and rate limiting for Whisper API.
+Implements WebSocket-based typing indicators that show when
+the AI is processing a response. Updates chat UI to display
+animated ellipsis during response generation.
 
 Fixes #42
 
@@ -582,7 +784,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 #### Refactoring
 ```
-refactor: Split main.py into feature managers
+refactor: Split core/main.py into feature managers
 
 Extracted session management, task coordination, and message
 routing into dedicated manager classes. Improves testability
@@ -635,7 +837,7 @@ Use this checklist when reviewing PRs:
 ### Testing
 - [ ] Tests exist and are meaningful (not just for coverage)
 - [ ] All tests pass locally
-- [ ] Coverage is adequate (70%+ for critical paths)
+- [ ] Coverage is adequate (70%+ overall, 80%+ critical paths)
 - [ ] Edge cases are tested
 - [ ] Error conditions are tested
 
