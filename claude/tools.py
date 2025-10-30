@@ -2,7 +2,7 @@
 Claude API Tool Definitions and Executors
 
 Provides tool definitions and execution logic for Claude API tool calling.
-Currently supports SQLite database queries for accessing task and analytics data.
+Provides SQLite database queries, web search, and git repository queries.
 """
 
 import json
