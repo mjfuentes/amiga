@@ -96,3 +96,9 @@ data/archive/
 # Prevent duplicate files in root (belong in telegram_bot/)
 /database.py
 /config.py
+
+# Deployment configuration and state
+.env.deploy
+scripts/deploy/.state/
+*.pem
+*.key
