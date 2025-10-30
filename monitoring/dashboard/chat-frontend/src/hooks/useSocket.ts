@@ -22,6 +22,12 @@ const getStorageKey = (): string => {
   return `chat_history_${sessionId}`;
 };
 
+// Token storage key
+const getTokenStorageKey = (): string => {
+  const sessionId = getSessionId();
+  return `token_counts_${sessionId}`;
+};
+
 // Load messages from sessionStorage (window-specific)
 const loadMessages = (): Message[] => {
   try {
@@ -30,6 +36,17 @@ const loadMessages = (): Message[] => {
   } catch (error) {
     console.error('Failed to load chat history:', error);
     return [];
+  }
+};
+
+// Load token counts from sessionStorage
+const loadTokenCounts = (): { input: number; output: number } => {
+  try {
+    const stored = sessionStorage.getItem(getTokenStorageKey());
+    return stored ? JSON.parse(stored) : { input: 0, output: 0 };
+  } catch (error) {
+    console.error('Failed to load token counts:', error);
+    return { input: 0, output: 0 };
   }
 };
 
@@ -42,6 +59,15 @@ const saveMessages = (messages: Message[]) => {
   }
 };
 
+// Save token counts to sessionStorage
+const saveTokenCounts = (tokens: { input: number; output: number }) => {
+  try {
+    sessionStorage.setItem(getTokenStorageKey(), JSON.stringify(tokens));
+  } catch (error) {
+    console.error('Failed to save token counts:', error);
+  }
+};
+
 // Clear messages from sessionStorage
 const clearStoredMessages = () => {
   try {
@@ -51,16 +77,30 @@ const clearStoredMessages = () => {
   }
 };
 
+// Clear token counts from sessionStorage
+const clearStoredTokenCounts = () => {
+  try {
+    sessionStorage.removeItem(getTokenStorageKey());
+  } catch (error) {
+    console.error('Failed to clear token counts:', error);
+  }
+};
+
 export const useSocket = (token: string | null) => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(false);
   const [messages, setMessages] = useState<Message[]>(loadMessages());
-  const [totalTokens, setTotalTokens] = useState({ input: 0, output: 0 }); // Tracks context size
+  const [totalTokens, setTotalTokens] = useState(loadTokenCounts()); // Tracks context size - persisted across refreshes
 
-  // Save messages to localStorage whenever they change
+  // Save messages to sessionStorage whenever they change
   useEffect(() => {
     saveMessages(messages);
   }, [messages]);
+
+  // Save token counts to sessionStorage whenever they change
+  useEffect(() => {
+    saveTokenCounts(totalTokens);
+  }, [totalTokens]);
 
   useEffect(() => {
     if (!token) return;
@@ -124,8 +164,9 @@ export const useSocket = (token: string | null) => {
 
     newSocket.on('clear_chat', (data) => {
       console.log('Received clear_chat event:', data);
-      // Clear localStorage
+      // Clear sessionStorage
       clearStoredMessages();
+      clearStoredTokenCounts();
 
       // Clear messages completely
       setMessages([]);
@@ -184,6 +225,7 @@ export const useSocket = (token: string | null) => {
       if (response.ok) {
         // Clear sessionStorage
         clearStoredMessages();
+        clearStoredTokenCounts();
 
         // Clear local messages state completely
         setMessages([]);
