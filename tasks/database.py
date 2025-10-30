@@ -945,9 +945,9 @@ class Database:
             """
             INSERT INTO tool_usage (
                 timestamp, task_id, tool_name, duration_ms, success, error, parameters, error_category,
-                input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens
+                screenshot_path, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 datetime.now().isoformat(),
@@ -958,6 +958,7 @@ class Database:
                 error,
                 json.dumps(parameters) if parameters else None,
                 error_category,
+                None,  # screenshot_path
                 input_tokens,
                 output_tokens,
                 cache_creation_tokens,
