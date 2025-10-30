@@ -229,8 +229,10 @@ class ClaudeInteractiveSession:
             # - Task: Invoke specialized agents (code_agent, frontend_agent, etc.)
             # - TodoWrite: Track progress
             # - Read/Glob/Grep/Bash: Analyze codebase before routing to agents
-            # Workflows should NOT modify code directly - they invoke specialized agents for that
-            cmd.extend(["--allowed-tools", "Task,TodoWrite,Read,Glob,Grep,Bash"])
+            # - Write/Edit: Create simple files if needed (reports, logs)
+            # Note: Specialized agents invoked via Task tool get their own tool lists from their .md configs
+            # Note: MCP tools (like Playwright) are available if configured in ~/.claude.json
+            cmd.extend(["--allowed-tools", "Task,TodoWrite,Read,Write,Edit,Glob,Grep,Bash"])
 
             logger.info(f"Starting Claude non-interactive session for task {task_id}")
             logger.info(f"Command: {' '.join(cmd)}")

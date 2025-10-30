@@ -33,17 +33,21 @@ The interface is a web chat. The implementation is automated. The monitoring is 
 ## Installation
 
 ```bash
-git clone <repo_url> && cd amiga
+git clone https://github.com/mjfuentes/amiga.git && cd amiga
 python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt && pre-commit install
+pip install -r requirements.txt
+pip install pre-commit && pre-commit install
 
 cp .env.example .env
 # Add ANTHROPIC_API_KEY and WORKSPACE_PATH
 
+# Install Playwright MCP for frontend testing
+claude mcp add playwright npx -s user @playwright/mcp@latest -- --isolated
+
 ./deploy.sh chat
 ```
 
-Access: `localhost:3000/chat`
+Access: `http://localhost:3000`
 
 ## Architecture
 

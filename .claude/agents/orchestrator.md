@@ -1,7 +1,7 @@
 ---
 name: orchestrator
 description: Task orchestrator spawned for ALL background tasks. Coordinates multiple specialized agents (code_agent, frontend_agent, research_agent) to complete complex tasks. ONLY delegates - never executes directly.
-tools: Task, TodoWrite, Read, Glob, Grep, Bash
+tools: Task, TodoWrite, Read, Write, Edit, Glob, Grep, Bash
 model: inherit
 ---
 
