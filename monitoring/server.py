@@ -35,6 +35,8 @@ from tasks.manager import TaskManager  # noqa: E402
 from tasks.pool import AgentPool, TaskPriority  # noqa: E402
 from tasks.tracker import ToolUsageTracker  # noqa: E402
 from tasks.monitor import TaskMonitor  # noqa: E402
+from auth.session_manager import SessionManager as AuthSessionManager  # noqa: E402
+from auth.middleware import AuthMiddleware, init_auth_middleware, require_auth  # noqa: E402
 from monitoring.commands import CommandHandler  # noqa: E402
 from utils.logging_setup import configure_root_logger  # noqa: E402
 
@@ -252,21 +254,7 @@ def create_token(user_id: str, expiration_hours: int = TOKEN_EXPIRATION_HOURS) -
 
 def verify_token(token: str) -> str | None:
     """Verify JWT token and return user_id, or None if invalid."""
-    if not token:
-        return None
-
-    # Support dummy tokens for NO_AUTH_MODE (development/testing)
-    if token.startswith("dummy-token-"):
-        user_id = token.replace("dummy-token-", "")
-        return user_id if user_id else None
-
-    try:
-        payload = pyjwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        return payload.get("user_id")
-    except pyjwt.ExpiredSignatureError:
-        return None
-    except pyjwt.InvalidTokenError:
-        return None
+    return AuthMiddleware.verify_access_token(token)
 
 
 def register_user(username: str, email: str, password: str) -> tuple[bool, str]:
@@ -326,8 +314,8 @@ def login_user(username: str, password: str) -> tuple[bool, str]:
     if not verify_password(password, user["password_hash"]):
         return False, "Invalid username or password"
 
-    token = create_token(user["user_id"])
-    return True, token
+    tokens = generate_token(user["user_id"])  # Returns (access_token, refresh_token)
+    return True, tokens
 
 
 def get_user_info(user_id: str) -> dict | None:
@@ -937,6 +925,55 @@ def auth_verify():
 
 
 # --- Chat API Endpoints ---
+
+
+
+@app.route("/api/auth/refresh", methods=["POST"])
+def auth_refresh():
+    """Refresh access token using refresh token."""
+    try:
+        data = request.json
+        refresh_token = data.get("refresh_token")
+        
+        if not refresh_token:
+            return jsonify({"error": "Refresh token required"}), 400
+        
+        result = AuthMiddleware.refresh_access_token(refresh_token)
+        if not result:
+            return jsonify({"error": "Invalid or expired refresh token"}), 401
+        
+        new_access_token, user_id = result
+        user_info = get_user_info(user_id)
+        
+        return jsonify({
+            "access_token": new_access_token,
+            "user": user_info
+        })
+        
+    except Exception as e:
+        logger.error(f"Token refresh error: {e}", exc_info=True)
+        return jsonify({"error": "Internal server error"}), 500
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+def auth_logout():
+    """Logout and invalidate session."""
+    try:
+        token = request.headers.get("Authorization", "").replace("Bearer ", "")
+        
+        if not token:
+            return jsonify({"error": "No token provided"}), 400
+        
+        success = AuthMiddleware.logout_session(token)
+        
+        if success:
+            return jsonify({"message": "Logged out successfully"})
+        else:
+            return jsonify({"message": "Session not found (may already be logged out)"})
+        
+    except Exception as e:
+        logger.error(f"Logout error: {e}", exc_info=True)
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/api/chat/history", methods=["GET"])
@@ -3688,6 +3725,29 @@ def run_with_auto_restart(host: str = "0.0.0.0", port: int = 3000, debug: bool =
             break
 
 
+
+def run_session_cleanup():
+    """Background task to clean up expired sessions."""
+    import threading
+    import time
+    
+    def cleanup_loop():
+        while True:
+            try:
+                count = auth_session_manager.cleanup_expired_sessions()
+                if count > 0:
+                    logger.info(f"Session cleanup: removed {count} expired/inactive sessions")
+            except Exception as e:
+                logger.error(f"Error during session cleanup: {e}", exc_info=True)
+            
+            # Run every hour
+            time.sleep(3600)
+    
+    thread = threading.Thread(target=cleanup_loop, daemon=True, name="SessionCleanup")
+    thread.start()
+    logger.info("Session cleanup background task started")
+
+
 if __name__ == "__main__":
     # Setup logging
     configure_root_logger()
@@ -3700,6 +3760,7 @@ if __name__ == "__main__":
 
     # Setup graceful shutdown handlers
     setup_graceful_shutdown()
+    run_session_cleanup()
 
     # Check if we should enable auto-restart
     if auto_restart:
