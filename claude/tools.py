@@ -9,6 +9,7 @@ import json
 import logging
 import re
 import sqlite3
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -83,9 +84,57 @@ The search will return relevant web results with titles, URLs, and snippets.""",
     },
 }
 
+GIT_TOOL = {
+    "name": "git_query",
+    "description": """Query git repository information for the AMIGA project.
+
+Common operations:
+- git status: Check working tree status
+- git log: View commit history (last N commits)
+- git diff: Show uncommitted changes
+- git branch: List branches or show current branch
+- git show: Show specific commit details
+
+Security: Read-only operations only. No commits, pushes, or destructive operations allowed.""",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "operation": {
+                "type": "string",
+                "enum": ["status", "log", "diff", "branch", "show"],
+                "description": "Git operation to perform: status (working tree), log (history), diff (changes), branch (list), show (commit details)",
+            },
+            "options": {
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": "For 'log': number of commits to show (default: 10, max: 50)",
+                        "minimum": 1,
+                        "maximum": 50,
+                    },
+                    "commit_hash": {
+                        "type": "string",
+                        "description": "For 'show': specific commit hash to display",
+                    },
+                    "branch_name": {
+                        "type": "string",
+                        "description": "For 'branch' or 'log': specific branch name",
+                    },
+                    "file_path": {
+                        "type": "string",
+                        "description": "For 'log' or 'diff': limit to specific file or directory",
+                    },
+                },
+            },
+        },
+        "required": ["operation"],
+    },
+}
+
 
 # All available tools
-AVAILABLE_TOOLS = [SQLITE_TOOL, WEBSEARCH_TOOL]
+AVAILABLE_TOOLS = [SQLITE_TOOL, WEBSEARCH_TOOL, GIT_TOOL]
 
 
 def _validate_select_query(query: str) -> tuple[bool, str | None]:
@@ -252,6 +301,98 @@ async def execute_websearch(query: str, num_results: int = 5) -> str:
         return json.dumps({"success": False, "error": f"Search error: {str(e)}", "result_count": 0, "results": []})
 
 
+
+async def execute_git_query(operation: str, options: dict[str, Any] | None = None) -> str:
+    """
+    Execute read-only git query operations.
+
+    Args:
+        operation: Git operation (status, log, diff, branch, show)
+        options: Optional parameters specific to the operation
+
+    Returns:
+        JSON string with results or error
+    """
+    opts = options or {}
+
+    # Find git repository root (project root)
+    current = Path(__file__).parent.parent
+    if not (current / ".git").exists():
+        current = Path.cwd()
+        while current != current.parent:
+            if (current / ".git").exists():
+                break
+            current = current.parent
+
+    if not (current / ".git").exists():
+        logger.error("Git repository not found")
+        return json.dumps({"success": False, "error": "Git repository not found", "output": ""})
+
+    try:
+        # Build git command based on operation
+        if operation == "status":
+            cmd = ["git", "status", "--short", "--branch"]
+
+        elif operation == "log":
+            limit = min(opts.get("limit", 10), 50)
+            cmd = ["git", "log", f"-{limit}", "--oneline", "--decorate"]
+            if opts.get("branch_name"):
+                cmd.append(opts["branch_name"])
+            if opts.get("file_path"):
+                cmd.extend(["--", opts["file_path"]])
+
+        elif operation == "diff":
+            cmd = ["git", "diff", "--stat"]
+            if opts.get("file_path"):
+                cmd.append(opts["file_path"])
+
+        elif operation == "branch":
+            cmd = ["git", "branch", "-a", "-v"]
+            if opts.get("branch_name"):
+                cmd = ["git", "branch", "--list", opts["branch_name"]]
+
+        elif operation == "show":
+            commit_hash = opts.get("commit_hash", "HEAD")
+            cmd = ["git", "show", "--stat", "--oneline", commit_hash]
+
+        else:
+            logger.error(f"Invalid git operation: {operation}")
+            return json.dumps({"success": False, "error": f"Invalid operation: {operation}", "output": ""})
+
+        # Execute git command
+        logger.info(f"Executing git command: {' '.join(cmd)}")
+        result = subprocess.run(
+            cmd,
+            cwd=str(current),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        if result.returncode != 0:
+            logger.warning(f"Git command failed: {result.stderr}")
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": result.stderr.strip() or "Git command failed",
+                    "output": result.stdout.strip(),
+                }
+            )
+
+        output = result.stdout.strip()
+        logger.info(f"Git command succeeded, output length: {len(output)} chars")
+
+        return json.dumps({"success": True, "operation": operation, "output": output})
+
+    except subprocess.TimeoutExpired:
+        logger.error("Git command timed out")
+        return json.dumps({"success": False, "error": "Git command timed out (>10s)", "output": ""})
+    except Exception as e:
+        logger.error(f"Git command error: {e}", exc_info=True)
+        return json.dumps({"success": False, "error": f"Unexpected error: {str(e)}", "output": ""})
+
+
+
 async def execute_tool(tool_name: str, tool_input: dict[str, Any]) -> str:
     """
     Execute a tool by name with given input.
@@ -272,6 +413,10 @@ async def execute_tool(tool_name: str, tool_input: dict[str, Any]) -> str:
     elif tool_name == "web_search":
         return await execute_websearch(
             query=tool_input.get("query", ""), num_results=tool_input.get("num_results", 5)
+        )
+    elif tool_name == "git_query":
+        return await execute_git_query(
+            operation=tool_input.get("operation", "status"), options=tool_input.get("options")
         )
     else:
         logger.error(f"Unknown tool requested: {tool_name}")
