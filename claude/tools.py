@@ -144,10 +144,20 @@ async def execute_sqlite_query(query: str, database: str, parameters: list[Any] 
         logger.warning(f"Invalid SQL query rejected: {error}")
         return json.dumps({"success": False, "error": error, "row_count": 0, "results": []})
 
-    # Get database path
-    from core.config import get_data_dir_for_cwd
+    # Get database path - find project root dynamically
+    # Walk up from current file until we find data/ directory
+    current = Path(__file__).parent.parent  # Go up to project root from claude/tools.py
+    data_dir = current / "data"
 
-    data_dir = Path(get_data_dir_for_cwd())
+    # If not found, try CWD parents
+    if not data_dir.exists():
+        current = Path.cwd()
+        while current != current.parent:
+            data_dir = current / "data"
+            if data_dir.exists():
+                break
+            current = current.parent
+
     db_path = data_dir / f"{database}.db"
 
     if not db_path.exists():
