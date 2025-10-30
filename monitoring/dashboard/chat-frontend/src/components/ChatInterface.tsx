@@ -13,15 +13,9 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import toast, { Toaster } from 'react-hot-toast';
 import { Message as MessageType } from '../types';
-import { TaskTooltip } from './TaskTooltip';
 import { TaskModal } from './TaskModal';
 import { TokenIndicator } from './TokenIndicator';
 import './ChatInterface.css';
-
-interface Task {
-  task_id: string;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'stopped';
-}
 
 interface ChatInterfaceProps {
   messages: MessageType[];
@@ -64,7 +58,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [isShuttingDown, setIsShuttingDown] = useState(false);
   const [taskStatusMap, setTaskStatusMap] = useState<Map<string, string>>(new Map());
-  const [activeTooltip, setActiveTooltip] = useState<{ taskId: string; element: HTMLElement } | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const lastMessageCountRef = useRef(messages.length);
@@ -82,15 +75,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       textarea.focus();
       inputRef.current = textarea;
     }
-  };
-
-  // Helper function to add task reference to chat input
-  const addTaskToChat = (taskRef: string) => {
-    // Add task reference to current input value
-    const newValue = inputValue ? `${inputValue} ${taskRef}` : taskRef;
-    setInputValue(newValue);
-    // Focus the input
-    setTimeout(focusInput, 100);
   };
 
   // Helper function to scroll to show the user's sent message and subsequent conversation
@@ -386,11 +370,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             setSelectedTaskId(taskId);
             setIsTaskModalOpen(true);
           }}
-          onMouseEnter={(e) => {
-            const target = e.currentTarget as HTMLElement;
-            setActiveTooltip({ taskId: urlTaskId, element: target });
-          }}
-          title={`Hover for details, click to view in dashboard${status ? ` (${status})` : ''}`}
+          title={`Click to view in dashboard${status ? ` (${status})` : ''}`}
         >
           {status && (
             <span
@@ -728,11 +708,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                                         setSelectedTaskId(urlTaskId);
                                         setIsTaskModalOpen(true);
                                       }}
-                                      onMouseEnter={(e) => {
-                                        const target = e.currentTarget as HTMLElement;
-                                        setActiveTooltip({ taskId: urlTaskId, element: target });
-                                      }}
-                                      title={`Hover for details, click to view in dashboard${status ? ` (${status})` : ''}`}
+                                      title={`Click to view in dashboard${status ? ` (${status})` : ''}`}
                                       {...props}
                                     >
                                       {status && (
@@ -862,16 +838,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           />
         </div>
       </MainContainer>
-
-      {/* Task Tooltip */}
-      {activeTooltip && (
-        <TaskTooltip
-          taskId={activeTooltip.taskId}
-          targetElement={activeTooltip.element}
-          onAddToChat={addTaskToChat}
-          onClose={() => setActiveTooltip(null)}
-        />
-      )}
 
       {/* Task Modal */}
       <TaskModal
