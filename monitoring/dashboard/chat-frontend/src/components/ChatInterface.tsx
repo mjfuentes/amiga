@@ -493,10 +493,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         focusInput();
       } else {
         // Send cleaned message (all other messages including commands)
-        onSendMessage(cleanMessage);
         setIsTyping(true);
-        // Simulate typing indicator for better UX
-        setTimeout(() => setIsTyping(false), 500);
+        onSendMessage(cleanMessage);
         // Re-focus after sending
         setTimeout(focusInput, 100);
       }
@@ -644,7 +642,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               !connected ? (
                 <TypingIndicator content="Connecting..." />
               ) : isTyping ? (
-                <TypingIndicator content="Assistant is typing..." />
+                <TypingIndicator content="thinking..." />
               ) : null
             }
           >
