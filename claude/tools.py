@@ -117,7 +117,7 @@ async def execute_sqlite_query(query: str, database: str, parameters: list[Any] 
     # Get database path
     from core.config import get_data_dir_for_cwd
 
-    data_dir = get_data_dir_for_cwd()
+    data_dir = Path(get_data_dir_for_cwd())
     db_path = data_dir / f"{database}.db"
 
     if not db_path.exists():
