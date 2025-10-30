@@ -27,33 +27,57 @@
 .token-details {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
+  align-items: flex-start;
 }
 
-.token-total {
+.token-count {
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 14px;
+  font-size: 13px;
   letter-spacing: -0.3px;
-}
-
-.token-breakdown {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.5);
   white-space: nowrap;
 }
 
-.token-in {
-  color: rgba(100, 200, 255, 0.8);
+.token-separator {
+  color: rgba(255, 255, 255, 0.4);
+  margin: 0 2px;
 }
 
-.token-out {
-  color: rgba(255, 180, 100, 0.8);
+.token-label {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-/* Responsive: hide breakdown on very small screens */
+/* Warning states */
+.token-indicator.token-warning {
+  background: rgba(255, 180, 0, 0.1);
+  border-color: rgba(255, 180, 0, 0.3);
+}
+
+.token-indicator.token-warning .token-count {
+  color: rgba(255, 200, 100, 0.95);
+}
+
+.token-indicator.token-critical {
+  background: rgba(255, 80, 80, 0.1);
+  border-color: rgba(255, 80, 80, 0.3);
+}
+
+.token-indicator.token-critical .token-count {
+  color: rgba(255, 120, 120, 0.95);
+}
+
+/* Responsive: simplify on small screens */
 @media (max-width: 400px) {
-  .token-breakdown {
+  .token-indicator {
+    padding: 4px 8px;
+    gap: 6px;
+  }
+
+  .token-label {
     display: none;
   }
 }
