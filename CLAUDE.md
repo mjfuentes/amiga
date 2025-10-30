@@ -1053,8 +1053,45 @@ Tests in `tests/test_*.py`
 
 **Solution**: `code_agent` always commits. If stuck, check `git status` in affected repos.
 
+## Production Server Access
+
+**Current Deployment**: 167.172.28.21 (DigitalOcean)
+
+**SSH Access**:
+```bash
+# Quick connect
+ssh -i ~/.ssh/amiga_deploy_ed25519 amiga@167.172.28.21
+
+# Via state file (if IP changes)
+ssh -i ~/.ssh/amiga_deploy_ed25519 amiga@$(cat scripts/deploy/.state/droplet_ip)
+```
+
+**Remote Commands**:
+```bash
+# Check service status
+ssh -i ~/.ssh/amiga_deploy_ed25519 amiga@167.172.28.21 "sudo systemctl status amiga"
+
+# View logs
+ssh -i ~/.ssh/amiga_deploy_ed25519 amiga@167.172.28.21 "tail -f /opt/amiga/logs/monitoring.log"
+
+# Check database
+ssh -i ~/.ssh/amiga_deploy_ed25519 amiga@167.172.28.21 "sqlite3 /opt/amiga/data/agentlab.db 'SELECT COUNT(*) FROM tasks;'"
+
+# Restart service
+ssh -i ~/.ssh/amiga_deploy_ed25519 amiga@167.172.28.21 "sudo systemctl restart amiga"
+```
+
+**Access Points**:
+- Web UI: http://167.172.28.21
+- Health: http://167.172.28.21/health
+- Database: `/opt/amiga/data/agentlab.db`
+- Backups: `/opt/amiga/backups/` (daily at 2 AM)
+
+**Deployment Docs**: See `scripts/deploy/README.md`
+
 ## Troubleshooting Commands
 
+**Local Development**:
 ```bash
 # Check logs for errors
 tail -100 logs/monitoring.log | grep ERROR
