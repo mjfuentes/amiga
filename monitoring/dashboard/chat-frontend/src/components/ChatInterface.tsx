@@ -15,6 +15,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import { Message as MessageType } from '../types';
 import { TaskTooltip } from './TaskTooltip';
 import { TaskModal } from './TaskModal';
+import { TokenIndicator } from './TokenIndicator';
 import './ChatInterface.css';
 
 interface Task {
@@ -30,6 +31,10 @@ interface ChatInterfaceProps {
   onLogout: () => void;
   chatViewActive: boolean;
   setChatViewActive: (active: boolean) => void;
+  totalTokens: {
+    input: number;
+    output: number;
+  };
 }
 
 // Available commands with descriptions
@@ -50,6 +55,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onLogout,
   chatViewActive,
   setChatViewActive,
+  totalTokens,
 }) => {
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -652,6 +658,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             title="View monitoring dashboard"
           />
         </div>
+        <TokenIndicator totalTokens={totalTokens} />
       </div>
 
       <MainContainer>

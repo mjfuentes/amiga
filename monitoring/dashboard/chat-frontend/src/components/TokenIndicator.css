@@ -1,0 +1,59 @@
+.token-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  transition: all 0.2s ease;
+  cursor: default;
+  user-select: none;
+}
+
+.token-indicator:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.token-icon {
+  font-size: 16px;
+  opacity: 0.8;
+}
+
+.token-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.token-total {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  letter-spacing: -0.3px;
+}
+
+.token-breakdown {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  white-space: nowrap;
+}
+
+.token-in {
+  color: rgba(100, 200, 255, 0.8);
+}
+
+.token-out {
+  color: rgba(255, 180, 100, 0.8);
+}
+
+/* Responsive: hide breakdown on very small screens */
+@media (max-width: 400px) {
+  .token-breakdown {
+    display: none;
+  }
+}

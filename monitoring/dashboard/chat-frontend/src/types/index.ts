@@ -21,6 +21,10 @@ export interface SocketResponse {
   message: string;
   type: 'direct' | 'task_started' | 'task_update';
   task_id?: string;
+  tokens?: {
+    input: number;
+    output: number;
+  };
 }
 
 export interface TodoItem {

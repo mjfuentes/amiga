@@ -9,7 +9,7 @@ import './App.css';
 
 function App() {
   const { user, token, loading, login, register, logout } = useAuth();
-  const { connected, messages, sendMessage, clearChat } = useSocket(token);
+  const { connected, messages, sendMessage, clearChat, totalTokens } = useSocket(token);
   const [chatViewActive, setChatViewActive] = useState(false);
 
   /**
@@ -57,6 +57,7 @@ function App() {
         onLogout={logout}
         chatViewActive={chatViewActive}
         setChatViewActive={setChatViewActive}
+        totalTokens={totalTokens}
       />
       <SessionsSidebar visible={showSidebar} />
     </div>

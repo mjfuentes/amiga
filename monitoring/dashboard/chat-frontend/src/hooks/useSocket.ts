@@ -55,6 +55,7 @@ export const useSocket = (token: string | null) => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(false);
   const [messages, setMessages] = useState<Message[]>(loadMessages());
+  const [totalTokens, setTotalTokens] = useState({ input: 0, output: 0 });
 
   // Save messages to localStorage whenever they change
   useEffect(() => {
@@ -96,6 +97,14 @@ export const useSocket = (token: string | null) => {
         timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, newMessage]);
+
+      // Accumulate tokens if provided
+      if (data.tokens) {
+        setTotalTokens((prev) => ({
+          input: prev.input + (data.tokens?.input || 0),
+          output: prev.output + (data.tokens?.output || 0),
+        }));
+      }
     });
 
     newSocket.on('command_result', (data: any) => {
@@ -120,6 +129,9 @@ export const useSocket = (token: string | null) => {
 
       // Clear messages completely
       setMessages([]);
+
+      // Reset token counter
+      setTotalTokens({ input: 0, output: 0 });
     });
 
     setSocket(newSocket);
@@ -175,6 +187,10 @@ export const useSocket = (token: string | null) => {
 
         // Clear local messages state completely
         setMessages([]);
+
+        // Reset token counter
+        setTotalTokens({ input: 0, output: 0 });
+
         console.log('Chat session cleared for session:', sessionId);
         return true;
       } else {
@@ -192,5 +208,6 @@ export const useSocket = (token: string | null) => {
     messages,
     sendMessage,
     clearChat,
+    totalTokens,
   };
 };
