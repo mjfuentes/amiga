@@ -115,7 +115,7 @@ set -e
 cd /opt/amiga
 
 echo "📦 Creating virtual environment..."
-python3.12 -m venv venv
+python3.10 -m venv venv
 source venv/bin/activate
 
 echo "📦 Installing Python dependencies..."

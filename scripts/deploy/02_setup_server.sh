@@ -45,7 +45,7 @@ apt-get upgrade -y -qq
 
 echo "📦 Installing system dependencies..."
 apt-get install -y -qq \
-    python3.12 python3.12-venv python3-pip \
+    python3.10 python3.10-venv python3-pip \
     git jq curl wget \
     nginx certbot python3-certbot-nginx \
     build-essential libssl-dev libffi-dev python3-dev \
@@ -89,51 +89,30 @@ echo "🌐 Configuring nginx..."
 # Remove default site
 rm -f /etc/nginx/sites-enabled/default
 
-# Create nginx config
+# Add rate limiting and WebSocket map to main nginx config
+cat > /etc/nginx/conf.d/amiga-http.conf <<EOF
+# Rate limiting zones
+limit_req_zone \$binary_remote_addr zone=api:10m rate=10r/s;
+limit_req_zone \$binary_remote_addr zone=ws:10m rate=5r/s;
+
+# WebSocket upgrade map
+map \$http_upgrade \$connection_upgrade {
+    default upgrade;
+    '' close;
+}
+EOF
+
+# Create nginx site config
 cat > /etc/nginx/sites-available/amiga << 'NGINX_CONFIG'
-# HTTP → HTTPS redirect (will be configured by certbot)
+# HTTP server - allow both HTTP and HTTPS (for IP access without SSL)
 server {
     listen 80;
     server_name DOMAIN_PLACEHOLDER;
 
-    location /.well-known/acme-challenge/ {
-        root /var/www/html;
-    }
-
-    location / {
-        return 301 https://$server_name$request_uri;
-    }
-}
-
-# HTTPS server (will be configured by certbot)
-server {
-    listen 443 ssl http2;
-    server_name DOMAIN_PLACEHOLDER;
-
-    # SSL certificates (placeholder - will be set by certbot)
-    ssl_certificate /etc/ssl/certs/ssl-cert-snakeoil.pem;
-    ssl_certificate_key /etc/ssl/private/ssl-cert-snakeoil.key;
-
-    # SSL configuration
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-    ssl_prefer_server_ciphers on;
-
     # Security headers
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-XSS-Protection "1; mode=block" always;
-
-    # Rate limiting zones
-    limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
-    limit_req_zone $binary_remote_addr zone=ws:10m rate=5r/s;
-
-    # WebSocket upgrade map
-    map $http_upgrade $connection_upgrade {
-        default upgrade;
-        '' close;
-    }
 
     # Static files (chat frontend)
     location /static/chat/ {
