@@ -536,7 +536,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ taskId, isOpen, onClose })
                 {/* Token Usage */}
                 {taskDetails.token_usage && (
                   <section className="task-section">
-                    <h3 className="task-section-title">💰 Token Usage</h3>
+                    <h3 className="task-section-title">Token Usage</h3>
                     <div className="token-usage-grid">
                       <div className="token-usage-item">
                         <span className="token-label">Input:</span>
