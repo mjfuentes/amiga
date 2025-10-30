@@ -45,17 +45,28 @@ check_prerequisites() {
     local missing=0
 
     if ! command -v doctl &> /dev/null; then
-        log_error "doctl not found. Run: ./scripts/deploy/00_prerequisites.sh"
+        log_error "doctl not found"
+        echo ""
+        echo "Install doctl:"
+        echo "  macOS:  brew install doctl"
+        echo "  Linux:  wget https://github.com/digitalocean/doctl/releases/download/v1.104.0/doctl-1.104.0-linux-amd64.tar.gz"
+        echo "          tar xf doctl-1.104.0-linux-amd64.tar.gz"
+        echo "          sudo mv doctl /usr/local/bin"
         missing=1
     fi
 
     if ! command -v jq &> /dev/null; then
-        log_error "jq not found. Install: brew install jq"
+        log_error "jq not found"
+        echo ""
+        echo "Install jq:"
+        echo "  macOS:  brew install jq"
+        echo "  Linux:  sudo apt install jq"
         missing=1
     fi
 
     if ! command -v rsync &> /dev/null; then
         log_error "rsync not found"
+        echo "  Install: brew install rsync (macOS) or sudo apt install rsync (Linux)"
         missing=1
     fi
 
