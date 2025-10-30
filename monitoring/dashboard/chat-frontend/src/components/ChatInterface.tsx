@@ -222,7 +222,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
     const connectSSE = () => {
       try {
-        eventSource = new EventSource('/api/stream/metrics?hours=24');
+        // Use same base URL as WebSocket (respects REACT_APP_SOCKET_URL)
+        const baseUrl = process.env.REACT_APP_SOCKET_URL || window.location.origin;
+        const sseUrl = `${baseUrl}/api/stream/metrics?hours=24`;
+        eventSource = new EventSource(sseUrl);
 
         eventSource.onopen = () => {
           console.log('ChatInterface SSE connection established');

@@ -64,8 +64,10 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
 
     const connectSSE = () => {
       try {
-        // Connect to the same SSE endpoint as the monitoring dashboard
-        eventSource = new EventSource('/api/stream/metrics?hours=24');
+        // Use same base URL as WebSocket (respects REACT_APP_SOCKET_URL)
+        const baseUrl = process.env.REACT_APP_SOCKET_URL || window.location.origin;
+        const sseUrl = `${baseUrl}/api/stream/metrics?hours=24`;
+        eventSource = new EventSource(sseUrl);
 
         eventSource.onopen = () => {
           console.log('Task sidebar connected to SSE');
