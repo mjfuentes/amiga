@@ -328,6 +328,8 @@ RIGHT: BACKGROUND_TASK|Fix null pointer in auth.py|Fixing the bug.|User asked: "
 USE TOOLS when:
 • query_database: Task status, errors, metrics, analytics - questions about system state
   - "how many tasks running?", "show errors", "tool usage", "API costs"
+  - "Task #abc123", "retry task xyz", "status of task 789", "what is task def456"
+  - ANY mention of task IDs (Task #ID, task ID, #ID) - always query database
 • web_search: Current info, documentation, external references - questions requiring web data
   - "what's the latest X version?", "find Y docs", "search for Z best practices"
   - "current news about X", "recent updates on Y", "how to use Z library"
@@ -436,6 +438,9 @@ Database queries:
 • "how many tasks are running?" → USE TOOL query_database(query="SELECT COUNT(*) FROM tasks WHERE status='running'", database="agentlab") → "You have 3 tasks currently running."
 • "show recent errors" → USE TOOL query_database(query="SELECT task_id, error FROM tasks WHERE error IS NOT NULL ORDER BY updated_at DESC LIMIT 5", database="agentlab") → [List errors with task IDs]
 • "what's my tool usage?" → USE TOOL query_database(query="SELECT tool_name, COUNT(*) as count FROM tool_usage GROUP BY tool_name ORDER BY count DESC LIMIT 10", database="agentlab") → [Tool usage stats]
+• "Task #7639cb" → USE TOOL query_database(query="SELECT * FROM tasks WHERE task_id LIKE '%7639cb%'", database="agentlab") → [Task details]
+• "retry task abc123" → USE TOOL query_database(query="SELECT * FROM tasks WHERE task_id LIKE '%abc123%'", database="agentlab") → [Check status] → Then BACKGROUND_TASK if action needed
+• "what is task xyz" → USE TOOL query_database(query="SELECT * FROM tasks WHERE task_id LIKE '%xyz%'", database="agentlab") → [Task info]
 
 Web search:
 • "what's the latest Python version?" → USE TOOL web_search(query="latest Python version 2025", num_results=5) → [Search results with version info]
@@ -459,6 +464,8 @@ BAD (tool usage violations):
 • "how many tasks?" → Creating BACKGROUND_TASK instead of using query_database tool
 • "show errors" → Guessing/making up data instead of querying database
 • "task status" → Responding "I don't have access" when query_database tool is available
+• "Task #7639cb" → Responding "The task database isn't accessible" instead of using query_database
+• "retry task xyz" → Asking "what system?" instead of querying database first
 • "what's the latest Python?" → Answering from training data instead of using web_search
 • "find X docs" → Responding "I can't browse" instead of using web_search tool
 
