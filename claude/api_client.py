@@ -550,8 +550,15 @@ current_workspace: {safe_workspace}
         # Create client
         client = anthropic.Anthropic(api_key=api_key)
 
-        # Prepare messages
+        # Prepare messages - start with conversation history
         messages = []
+
+        # Add conversation history as actual message objects (not just in system prompt)
+        for msg in safe_history:
+            messages.append({
+                "role": msg["role"],
+                "content": msg["content"]
+            })
 
         # Add image if provided
         if image_path and os.path.exists(image_path):
