@@ -8,27 +8,37 @@ interface TokenIndicatorProps {
   };
 }
 
+const MAX_TOKENS = 200000; // Claude Sonnet 4.5 context window
+
 export const TokenIndicator: React.FC<TokenIndicatorProps> = ({ totalTokens }) => {
-  const total = totalTokens.input + totalTokens.output;
-  
+  const contextTokens = totalTokens.input; // Input tokens = current conversation context
+
   // Don't show if no tokens used yet
-  if (total === 0) return null;
+  if (contextTokens === 0) return null;
 
   // Format numbers with commas for readability
   const formatNumber = (num: number): string => {
     return num.toLocaleString();
   };
 
+  // Calculate percentage for visual indicator
+  const percentage = (contextTokens / MAX_TOKENS) * 100;
+
+  // Determine warning level
+  const getWarningClass = () => {
+    if (percentage > 90) return 'token-critical';
+    if (percentage > 75) return 'token-warning';
+    return '';
+  };
+
   return (
-    <div className="token-indicator">
+    <div className={`token-indicator ${getWarningClass()}`}>
       <div className="token-icon">🔢</div>
       <div className="token-details">
-        <div className="token-total">{formatNumber(total)}</div>
-        <div className="token-breakdown">
-          <span className="token-in" title="Input tokens">{formatNumber(totalTokens.input)} in</span>
-          {' · '}
-          <span className="token-out" title="Output tokens">{formatNumber(totalTokens.output)} out</span>
+        <div className="token-count">
+          {formatNumber(contextTokens)} <span className="token-separator">/</span> {formatNumber(MAX_TOKENS)}
         </div>
+        <div className="token-label">tokens</div>
       </div>
     </div>
   );

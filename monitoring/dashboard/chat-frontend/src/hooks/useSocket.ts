@@ -55,7 +55,7 @@ export const useSocket = (token: string | null) => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(false);
   const [messages, setMessages] = useState<Message[]>(loadMessages());
-  const [totalTokens, setTotalTokens] = useState({ input: 0, output: 0 });
+  const [totalTokens, setTotalTokens] = useState({ input: 0, output: 0 }); // Tracks context size
 
   // Save messages to localStorage whenever they change
   useEffect(() => {
@@ -98,12 +98,12 @@ export const useSocket = (token: string | null) => {
       };
       setMessages((prev) => [...prev, newMessage]);
 
-      // Accumulate tokens if provided
+      // Update context tokens (input = current conversation context size)
       if (data.tokens) {
-        setTotalTokens((prev) => ({
-          input: prev.input + (data.tokens?.input || 0),
-          output: prev.output + (data.tokens?.output || 0),
-        }));
+        setTotalTokens({
+          input: data.tokens.input || 0,  // Current context size (not cumulative)
+          output: data.tokens.output || 0,
+        });
       }
     });
 
