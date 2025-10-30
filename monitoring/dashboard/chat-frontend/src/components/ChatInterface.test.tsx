@@ -34,6 +34,7 @@ describe('ChatInterface Input Highlighting', () => {
     onLogout: jest.fn(),
     chatViewActive: false,
     setChatViewActive: jest.fn(),
+    totalTokens: { input: 0, output: 0 },
   };
 
   beforeEach(() => {

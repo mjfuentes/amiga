@@ -552,8 +552,21 @@ async def _handle_message_async(data, user_id: str, session_id: str = "default")
         command = message_text.strip()
 
         # Handle commands that don't go through Claude
-        if command.split()[0] in ['/status', '/stop', '/stopall', '/retry', '/view']:
+        if command.split()[0] in ['/status', '/stop', '/stopall', '/retry', '/view', '/clear']:
             logger.info(f"User {user_id}, session {session_id}: Command {command[:100]}")
+
+            # Handle /clear command directly
+            if command.strip() == '/clear':
+                session_manager.clear_session(user_id, session_id)
+                logger.info(f"Cleared session for user {user_id}, session {session_id}")
+                result = {
+                    "message": "✨ Conversation cleared. History reset.",
+                    "success": True
+                }
+                socketio.emit("command_result", result, room=room_id)
+                socketio.emit("clear_chat", {"reason": "clear"}, room=room_id)
+                return
+
             result = await command_handler.handle_command(command, user_id)
 
             # Check if we need to retry a task
@@ -673,7 +686,14 @@ async def _handle_message_async(data, user_id: str, session_id: str = "default")
         )
     else:
         # Direct response to specific session
-        socketio.emit("response", {"message": response, "type": "direct"}, room=room_id)
+        socketio.emit("response", {
+            "message": response,
+            "type": "direct",
+            "tokens": {
+                "input": usage_info.get("input_tokens", 0) if usage_info else 0,
+                "output": usage_info.get("output_tokens", 0) if usage_info else 0
+            }
+        }, room=room_id)
 
 
 @socketio.on("message")
