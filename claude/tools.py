@@ -30,7 +30,7 @@ Common queries:
 - Tool usage: SELECT tool_name, COUNT(*) as count FROM tool_usage GROUP BY tool_name ORDER BY count DESC
 - User activity: SELECT COUNT(*) as message_count FROM messages WHERE user_id=? AND timestamp > datetime('now', '-24 hours')
 
-Security: Only SELECT queries allowed. Results limited to 100 rows.""",
+Security: Only SELECT queries allowed.""",
     "input_schema": {
         "type": "object",
         "properties": {
@@ -162,32 +162,15 @@ async def execute_sqlite_query(query: str, database: str, parameters: list[Any] 
         conn.row_factory = sqlite3.Row  # Dict-like rows
         cursor = conn.cursor()
 
-        # Execute with row limit and parameters
+        # Execute query with parameters
         params = parameters or []
 
-        # Handle LIMIT clause - don't add if query already has one
-        query_upper = query.upper()
-        if "LIMIT" in query_upper:
-            # Query already has LIMIT - extract it
-            limit_match = re.search(r'\bLIMIT\s+(\d+)', query, re.IGNORECASE)
-            if limit_match:
-                existing_limit = int(limit_match.group(1))
-                if existing_limit > 100:
-                    # Replace with max 100
-                    limited_query = re.sub(r'\bLIMIT\s+\d+', 'LIMIT 100', query.rstrip(';'), flags=re.IGNORECASE)
-                else:
-                    # Keep existing limit
-                    limited_query = query.rstrip(';')
-            else:
-                # Has LIMIT keyword but couldn't parse - keep as is
-                limited_query = query.rstrip(';')
-        else:
-            # No LIMIT - add it
-            limited_query = f"{query.rstrip(';')} LIMIT 100"
+        # Clean up query (remove trailing semicolon)
+        clean_query = query.rstrip(';')
 
-        logger.info(f"Executing SQLite query on {database}: {limited_query[:100]}...")
+        logger.info(f"Executing SQLite query on {database}: {clean_query}")
 
-        cursor.execute(limited_query, params)
+        cursor.execute(clean_query, params)
         rows = cursor.fetchall()
 
         # Convert to dicts
