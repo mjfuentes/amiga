@@ -160,8 +160,16 @@ app.config["START_TIME"] = time.time()  # For health check uptime calculation
 allowed_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3001").split(",")
 CORS(app, origins=allowed_origins, supports_credentials=True)
 
-# Initialize SocketIO (using threading mode to avoid eventlet RLock issues)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading", logger=False, engineio_logger=False)
+# Initialize SocketIO with threading mode (eventlet causes hangs)
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode="threading",
+    logger=False,
+    engineio_logger=False,
+    ping_timeout=60,
+    ping_interval=25
+)
 
 # Initialize tracking systems (determine data paths based on where we're running from)
 # Use centralized config helper functions for CWD-relative paths
@@ -2776,11 +2784,22 @@ def task_documents(task_id: str):
         # Check if content should be included
         include_content = request.args.get("content", "false").lower() == "true"
 
-        # Check multiple possible session log locations (same as download_task_output)
+        # Get session_uuid from database
+        conn = user_db._get_connection()
+        cursor = conn.execute("SELECT session_uuid FROM tasks WHERE task_id = ?", (normalized_task_id,))
+        row = cursor.fetchone()
+
+        if not row or not row[0]:
+            return jsonify({"error": "Task not found or has no session"}), 404
+
+        session_uuid = row[0]
+
+        # Check multiple possible session log locations using session_uuid
         workspace_path_env = os.getenv("WORKSPACE_PATH", "/Users/matifuentes/Workspace")
+        amiga_root = Path(__file__).parent.parent  # /Users/matifuentes/Workspace/amiga
         possible_locations = [
-            Path(sessions_dir) / normalized_task_id,  # Local (agentlab/logs/sessions/)
-            Path(workspace_path_env) / "logs" / "sessions" / normalized_task_id,  # Workspace
+            amiga_root / sessions_dir / session_uuid,  # Local (agentlab/logs/sessions/)
+            Path(workspace_path_env) / "amiga" / "logs" / "sessions" / session_uuid,  # Workspace
         ]
 
         session_dir = None
