@@ -226,13 +226,17 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   // Fetch task status data via SSE
   useEffect(() => {
     let eventSource: EventSource | null = null;
+    let retryCount = 0;
+    let retryTimeout: NodeJS.Timeout | null = null;
+    const MAX_RETRY_DELAY = 30000; // 30 seconds max
 
     const connectSSE = () => {
       try {
         eventSource = new EventSource('/api/stream/metrics?hours=24');
-        
+
         eventSource.onopen = () => {
           console.log('ChatInterface SSE connection established');
+          retryCount = 0; // Reset retry count on successful connection
         };
 
         eventSource.onmessage = (event) => {
@@ -241,7 +245,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             if (!event.data || event.data.trim() === '' || event.data.trim() === ': heartbeat') {
               return;
             }
-            
+
             const data = JSON.parse(event.data);
             const tasks = data?.overview?.task_statistics?.recent_24h?.tasks;
             if (tasks && Array.isArray(tasks)) {
@@ -257,20 +261,35 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         };
 
         eventSource.onerror = (error) => {
-          console.error('ChatInterface SSE error:', error);
-          console.error('EventSource readyState:', eventSource?.readyState);
+          // Only log errors after first retry attempt (suppress initial connection errors)
+          if (retryCount > 0) {
+            console.warn('ChatInterface SSE connection failed, retrying...', {
+              readyState: eventSource?.readyState,
+              retryCount
+            });
+          }
+
           eventSource?.close();
-          // Retry connection after 5 seconds
-          setTimeout(connectSSE, 5000);
+
+          // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s (max)
+          const delay = Math.min(1000 * Math.pow(2, retryCount), MAX_RETRY_DELAY);
+          retryCount++;
+
+          retryTimeout = setTimeout(connectSSE, delay);
         };
       } catch (error) {
         console.error('Failed to create EventSource:', error);
       }
     };
 
-    connectSSE();
+    // Small delay before initial connection to ensure server is ready
+    const initialDelay = setTimeout(connectSSE, 500);
 
     return () => {
+      clearTimeout(initialDelay);
+      if (retryTimeout) {
+        clearTimeout(retryTimeout);
+      }
       if (eventSource) {
         eventSource.close();
       }
