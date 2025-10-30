@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import sqlite3
+import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -22,11 +23,17 @@ SCHEMA_VERSION = 14
 
 
 class Database:
-    """SQLite database wrapper for AMIGA storage"""
+    """
+    SQLite database wrapper for AMIGA storage with thread-local connections.
+
+    This class uses thread-local storage to ensure each thread gets its own
+    database connection, avoiding SQLite threading issues in multi-threaded
+    environments like Flask-SocketIO.
+    """
 
     def __init__(self, db_path: str | Path | None = None):
         """
-        Initialize database connection.
+        Initialize database connection manager.
 
         Args:
             db_path: Path to database file. If None, uses centralized config (recommended).
@@ -39,26 +46,48 @@ class Database:
 
         self.db_path.parent.mkdir(exist_ok=True)
 
-        # TEMPORARY FIX: Allow sharing connection across threads
-        # TODO: Refactor monitoring/server.py to use get_database() for thread-local connections
-        # The monitoring server shares task_manager.db across Flask threads, causing
-        # "SQLite objects created in a thread can only be used in that same thread" errors
-        self.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row  # Enable column access by name
+        # Thread-local storage for connections (one per thread)
+        self._local = threading.local()
 
-        # Lock for serializing write operations in async environment
-        self._write_lock = asyncio.Lock()
+        # Lock for serializing write operations across threads (for sync operations)
+        self._thread_write_lock = threading.Lock()
+
+        # Lock for serializing write operations in async environment (for async operations)
+        self._async_write_lock = asyncio.Lock()
+
+        # Initialize schema using main thread connection
+        conn = self._get_connection()
 
         # Enable WAL mode for better concurrency
-        self.conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA journal_mode=WAL")
 
         # Enable foreign keys
-        self.conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA foreign_keys = ON")
 
         # Initialize schema
         self._init_schema()
 
         logger.info(f"Database initialized at {self.db_path}")
+
+    def _get_connection(self) -> sqlite3.Connection:
+        """
+        Get thread-local database connection.
+
+        Returns:
+            sqlite3.Connection: Thread-specific connection
+        """
+        if not hasattr(self._local, 'conn') or self._local.conn is None:
+            self._local.conn = sqlite3.connect(str(self.db_path), check_same_thread=True)
+            self._local.conn.row_factory = sqlite3.Row
+            # Enable WAL and foreign keys for this connection
+            self._local.conn.execute("PRAGMA journal_mode=WAL")
+            self._local.conn.execute("PRAGMA foreign_keys = ON")
+        return self._local.conn
+
+    @property
+    def conn(self) -> sqlite3.Connection:
+        """Backward compatibility property for accessing connection"""
+        return self._get_connection()
 
     def _init_schema(self):
         """Initialize database schema"""
@@ -444,7 +473,7 @@ class Database:
         """Create a new task"""
         now = datetime.now().isoformat()
 
-        async with self._write_lock:
+        async with self._async_write_lock:
             cursor = self.conn.cursor()
             cursor.execute(
                 """
@@ -525,7 +554,7 @@ class Database:
         params.append(datetime.now().isoformat())
         params.append(task_id)
 
-        async with self._write_lock:
+        async with self._async_write_lock:
             cursor = self.conn.cursor()
             cursor.execute(f"UPDATE tasks SET {', '.join(updates)} WHERE task_id = ?", params)  # nosec B608
             self.conn.commit()
@@ -553,7 +582,7 @@ class Database:
         Returns:
             True if task was updated, False if task not found
         """
-        async with self._write_lock:
+        async with self._async_write_lock:
             cursor = self.conn.cursor()
             cursor.execute(
                 """
@@ -575,7 +604,7 @@ class Database:
 
     async def add_activity(self, task_id: str, message: str, output_lines: int | None = None) -> bool:
         """Add activity entry to task log"""
-        async with self._write_lock:
+        async with self._async_write_lock:
             cursor = self.conn.cursor()
             cursor.execute("SELECT activity_log FROM tasks WHERE task_id = ?", (task_id,))
             row = cursor.fetchone()
@@ -940,32 +969,34 @@ class Database:
         cache_read_tokens: int | None = None,
     ):
         """Record tool usage with optional token tracking"""
-        cursor = self.conn.cursor()
-        cursor.execute(
-            """
-            INSERT INTO tool_usage (
-                timestamp, task_id, tool_name, duration_ms, success, error, parameters, error_category,
-                screenshot_path, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens
+        with self._thread_write_lock:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO tool_usage (
+                    timestamp, task_id, tool_name, duration_ms, success, error, parameters, error_category,
+                    screenshot_path, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+                (
+                    datetime.now().isoformat(),
+                    task_id,
+                    tool_name,
+                    duration_ms,
+                    success,
+                    error,
+                    json.dumps(parameters) if parameters else None,
+                    error_category,
+                    None,  # screenshot_path
+                    input_tokens,
+                    output_tokens,
+                    cache_creation_tokens,
+                    cache_read_tokens,
+                ),
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                datetime.now().isoformat(),
-                task_id,
-                tool_name,
-                duration_ms,
-                success,
-                error,
-                json.dumps(parameters) if parameters else None,
-                error_category,
-                None,  # screenshot_path
-                input_tokens,
-                output_tokens,
-                cache_creation_tokens,
-                cache_read_tokens,
-            ),
-        )
-        self.conn.commit()
+            conn.commit()
 
         logger.debug(f"Recorded tool usage: {task_id} - {tool_name}")
 
@@ -1444,7 +1475,7 @@ class Database:
         """
         now = datetime.now().isoformat()
 
-        async with self._write_lock:
+        async with self._async_write_lock:
             cursor = self.conn.cursor()
 
             # Check if file already exists
@@ -2144,7 +2175,7 @@ class Database:
         """
         now = datetime.now().isoformat()
 
-        async with self._write_lock:
+        async with self._async_write_lock:
             cursor = self.conn.cursor()
 
             # Check if document already exists
@@ -2251,7 +2282,7 @@ class Database:
         """
         now = datetime.now().isoformat()
 
-        async with self._write_lock:
+        async with self._async_write_lock:
             cursor = self.conn.cursor()
 
             # Build update query
