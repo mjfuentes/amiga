@@ -3,6 +3,7 @@ Test code-task workflow script
 """
 
 import sys
+import tempfile
 from pathlib import Path
 
 # Add parent directory to path for imports
@@ -14,13 +15,22 @@ from tasks.database import Database
 from tasks.manager import TaskManager
 
 
+@pytest.fixture
+def temp_db():
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+    db = Database(db_path)
+    yield db
+    db.conn.close()
+    Path(db_path).unlink(missing_ok=True)
+
+
 @pytest.mark.asyncio
-async def test_create_test_task():
+async def test_create_test_task(temp_db):
     """Test that we can create a test task for code workflow"""
 
     # Initialize
-    db = Database()
-    task_manager = TaskManager(db=db)
+    task_manager = TaskManager(db=temp_db)
 
     # Create test task
     task = await task_manager.create_task(
@@ -57,11 +67,10 @@ async def test_create_test_task():
 
 
 @pytest.mark.asyncio
-async def test_workflow_task_attributes():
+async def test_workflow_task_attributes(temp_db):
     """Test that workflow-created tasks have correct attributes"""
 
-    db = Database()
-    task_manager = TaskManager(db=db)
+    task_manager = TaskManager(db=temp_db)
 
     # Create task with workflow
     task = await task_manager.create_task(
