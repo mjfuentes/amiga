@@ -2,12 +2,14 @@
 Claude API Tool Definitions and Executors
 
 Provides tool definitions and execution logic for Claude API tool calling.
-Provides SQLite database queries, web search, and git repository queries.
+Provides SQLite database queries, web search, git repository queries,
+and project-scoped file/code/database tools.
 """
 
 import json
 import logging
 import re
+import shutil
 import sqlite3
 import subprocess
 from pathlib import Path
@@ -15,8 +17,86 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Maximum file size for read_file (1 MB)
+_MAX_READ_FILE_SIZE = 1_048_576
 
-# Tool Definitions
+# Directories excluded from search/listing
+_EXCLUDED_DIRS = frozenset(
+    {
+        "node_modules",
+        "venv",
+        ".venv",
+        ".git",
+        "__pycache__",
+        "dist",
+        "build",
+        ".next",
+        "target",
+        ".tox",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        "egg-info",
+    }
+)
+
+_NO_ACTIVE_PROJECT_MSG = "No active project. Run 'amiga init' in your project directory first."
+
+
+# ---------------------------------------------------------------------------
+# Helper: active project resolution
+# ---------------------------------------------------------------------------
+
+
+def _get_active_project_path() -> Path | None:
+    """Return the filesystem path of the active project, or None."""
+    try:
+        from projects.registry import get_active_project
+
+        project = get_active_project()
+        if project and project.get("path"):
+            return Path(project["path"])
+    except Exception:
+        pass
+    return None
+
+
+def _validate_project_path(project_root: Path, relative_path: str) -> tuple[Path | None, str | None]:
+    """
+    Resolve *relative_path* inside *project_root* safely.
+
+    Returns (resolved_path, None) on success or (None, error_message) on failure.
+    """
+    if not relative_path:
+        return None, "Path is empty"
+
+    # Reject obvious traversal attempts before resolving
+    if ".." in relative_path.split("/") or ".." in relative_path.split("\\"):
+        return None, "Path traversal ('..') is not allowed"
+
+    resolved = (project_root / relative_path).resolve()
+
+    # Ensure the resolved path stays inside the project
+    try:
+        resolved.relative_to(project_root.resolve())
+    except ValueError:
+        return None, "Path escapes the project directory"
+
+    return resolved, None
+
+
+def _is_excluded_path(rel_path: Path) -> bool:
+    """Return True if any part of *rel_path* is in the exclusion set."""
+    for part in rel_path.parts:
+        if part in _EXCLUDED_DIRS or part.startswith("."):
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Tool Definitions -- AMIGA internal tools
+# ---------------------------------------------------------------------------
+
 SQLITE_TOOL = {
     "name": "query_database",
     "description": """Query the SQLite database for information about tasks, tool usage, sessions, or analytics.
@@ -86,7 +166,7 @@ The search will return relevant web results with titles, URLs, and snippets.""",
 
 GIT_TOOL = {
     "name": "git_query",
-    "description": """Query git repository information for the AMIGA project.
+    "description": """Query git repository information for the active project (falls back to AMIGA repo if no active project).
 
 Common operations:
 - git status: Check working tree status
@@ -132,9 +212,137 @@ Security: Read-only operations only. No commits, pushes, or destructive operatio
     },
 }
 
+# ---------------------------------------------------------------------------
+# Tool Definitions -- Project-scoped tools
+# ---------------------------------------------------------------------------
 
-# All available tools
-AVAILABLE_TOOLS = [SQLITE_TOOL, WEBSEARCH_TOOL, GIT_TOOL]
+READ_FILE_TOOL = {
+    "name": "read_file",
+    "description": "Read a file from the active project. Returns file contents with line numbers. "
+    "Use for viewing source code, config files, docs, etc. Path is relative to project root.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "File path relative to project root (e.g., 'src/auth.py', 'package.json')",
+            },
+            "start_line": {
+                "type": "integer",
+                "description": "Start reading from this line (1-indexed, default: 1)",
+            },
+            "max_lines": {
+                "type": "integer",
+                "description": "Maximum lines to return (default: 100, max: 500)",
+            },
+        },
+        "required": ["path"],
+    },
+}
+
+SEARCH_CODE_TOOL = {
+    "name": "search_code",
+    "description": "Search for text/patterns in the active project's codebase. Like grep/ripgrep. "
+    "Returns matching lines with file paths and line numbers.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "pattern": {
+                "type": "string",
+                "description": "Search pattern (supports basic regex)",
+            },
+            "file_pattern": {
+                "type": "string",
+                "description": "Glob to filter files (e.g., '*.py', '*.ts', 'src/**/*.js')",
+            },
+            "max_results": {
+                "type": "integer",
+                "description": "Maximum results (default: 20, max: 50)",
+            },
+        },
+        "required": ["pattern"],
+    },
+}
+
+LIST_FILES_TOOL = {
+    "name": "list_files",
+    "description": "List files in the active project matching a pattern. "
+    "Use to explore project structure, find files by name, or see directory contents.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "pattern": {
+                "type": "string",
+                "description": "Glob pattern (e.g., '**/*.py', 'src/components/*.tsx', '*') or directory path",
+            },
+            "max_results": {
+                "type": "integer",
+                "description": "Maximum files to return (default: 50, max: 200)",
+            },
+        },
+        "required": ["pattern"],
+    },
+}
+
+QUERY_PROJECT_DB_TOOL = {
+    "name": "query_project_database",
+    "description": "Query a SQLite database in the active project. Use this to check application data, "
+    "look up records, explore schemas. The project's databases and their schemas are described "
+    "in the project profile.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "database_path": {
+                "type": "string",
+                "description": "Path to database file relative to project root (e.g., 'data/app.db', 'db.sqlite3')",
+            },
+            "query": {
+                "type": "string",
+                "description": "SQL SELECT query to execute",
+            },
+            "parameters": {
+                "type": "array",
+                "items": {"type": ["string", "number", "boolean", "null"]},
+                "description": "Query parameters for ? placeholders",
+            },
+        },
+        "required": ["database_path", "query"],
+    },
+}
+
+PROJECT_INFO_TOOL = {
+    "name": "project_info",
+    "description": "Get information about the active project: languages, frameworks, structure, databases, "
+    "and their schemas. Use this to understand what you're working with.",
+    "input_schema": {
+        "type": "object",
+        "properties": {},
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# Tool collections
+# ---------------------------------------------------------------------------
+
+_BASE_TOOLS = [SQLITE_TOOL, WEBSEARCH_TOOL, GIT_TOOL]
+_PROJECT_TOOLS = [READ_FILE_TOOL, SEARCH_CODE_TOOL, LIST_FILES_TOOL, QUERY_PROJECT_DB_TOOL, PROJECT_INFO_TOOL]
+
+# All available tools -- includes project tools so they are always registered.
+# Individual executors return a helpful error when no active project is set.
+AVAILABLE_TOOLS = _BASE_TOOLS + _PROJECT_TOOLS
+
+
+def get_available_tools(has_active_project: bool = False) -> list[dict]:
+    """Return tool definitions, including project tools if an active project exists."""
+    if has_active_project:
+        return _BASE_TOOLS + _PROJECT_TOOLS
+    return list(_BASE_TOOLS)
+
+
+# ---------------------------------------------------------------------------
+# Query validation (shared)
+# ---------------------------------------------------------------------------
 
 
 def _validate_select_query(query: str) -> tuple[bool, str | None]:
@@ -175,9 +383,14 @@ def _validate_select_query(query: str) -> tuple[bool, str | None]:
     return True, None
 
 
+# ---------------------------------------------------------------------------
+# Executors -- AMIGA internal tools
+# ---------------------------------------------------------------------------
+
+
 async def execute_sqlite_query(query: str, database: str, parameters: list[Any] | None = None) -> str:
     """
-    Execute read-only SQLite query.
+    Execute read-only SQLite query against AMIGA's own databases.
 
     Args:
         query: SQL SELECT query
@@ -194,7 +407,6 @@ async def execute_sqlite_query(query: str, database: str, parameters: list[Any] 
         return json.dumps({"success": False, "error": error, "row_count": 0, "results": []})
 
     # Get database path - find project root dynamically
-    # Walk up from current file until we find data/ directory
     current = Path(__file__).parent.parent  # Go up to project root from claude/tools.py
     data_dir = current / "data"
 
@@ -216,25 +428,18 @@ async def execute_sqlite_query(query: str, database: str, parameters: list[Any] 
         )
 
     try:
-        # Connect with timeout
         conn = sqlite3.connect(str(db_path), timeout=5.0)
-        conn.row_factory = sqlite3.Row  # Dict-like rows
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        # Execute query with parameters
         params = parameters or []
-
-        # Clean up query (remove trailing semicolon)
-        clean_query = query.rstrip(';')
+        clean_query = query.rstrip(";")
 
         logger.info(f"Executing SQLite query on {database}: {clean_query}")
 
         cursor.execute(clean_query, params)
         rows = cursor.fetchall()
-
-        # Convert to dicts
         results = [dict(row) for row in rows]
-
         conn.close()
 
         logger.info(f"SQLite query returned {len(results)} rows")
@@ -263,15 +468,13 @@ async def execute_websearch(query: str, num_results: int = 5) -> str:
     try:
         from ddgs import DDGS
 
-        num_results = min(num_results, 10)  # Cap at 10
+        num_results = min(num_results, 10)
 
         logger.info(f"Executing web search: {query[:100]}... (requesting {num_results} results)")
 
-        # Execute search
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=num_results))
 
-        # Format results
         formatted_results = []
         for result in results:
             formatted_results.append(
@@ -301,10 +504,11 @@ async def execute_websearch(query: str, num_results: int = 5) -> str:
         return json.dumps({"success": False, "error": f"Search error: {str(e)}", "result_count": 0, "results": []})
 
 
-
 async def execute_git_query(operation: str, options: dict[str, Any] | None = None) -> str:
     """
-    Execute read-only git query operations.
+    Execute read-only git query operations against the active project.
+
+    Falls back to AMIGA's own repo if no active project is set.
 
     Args:
         operation: Git operation (status, log, diff, branch, show)
@@ -315,21 +519,24 @@ async def execute_git_query(operation: str, options: dict[str, Any] | None = Non
     """
     opts = options or {}
 
-    # Find git repository root (project root)
-    current = Path(__file__).parent.parent
-    if not (current / ".git").exists():
-        current = Path.cwd()
-        while current != current.parent:
-            if (current / ".git").exists():
-                break
-            current = current.parent
+    # Prefer active project; fall back to AMIGA repo
+    project_path = _get_active_project_path()
+    if project_path and (project_path / ".git").exists():
+        current = project_path
+    else:
+        current = Path(__file__).parent.parent
+        if not (current / ".git").exists():
+            current = Path.cwd()
+            while current != current.parent:
+                if (current / ".git").exists():
+                    break
+                current = current.parent
 
     if not (current / ".git").exists():
         logger.error("Git repository not found")
         return json.dumps({"success": False, "error": "Git repository not found", "output": ""})
 
     try:
-        # Build git command based on operation
         if operation == "status":
             cmd = ["git", "status", "--short", "--branch"]
 
@@ -359,8 +566,7 @@ async def execute_git_query(operation: str, options: dict[str, Any] | None = Non
             logger.error(f"Invalid git operation: {operation}")
             return json.dumps({"success": False, "error": f"Invalid operation: {operation}", "output": ""})
 
-        # Execute git command
-        logger.info(f"Executing git command: {' '.join(cmd)}")
+        logger.info(f"Executing git command: {' '.join(cmd)} in {current}")
         result = subprocess.run(
             cmd,
             cwd=str(current),
@@ -392,6 +598,276 @@ async def execute_git_query(operation: str, options: dict[str, Any] | None = Non
         return json.dumps({"success": False, "error": f"Unexpected error: {str(e)}", "output": ""})
 
 
+# ---------------------------------------------------------------------------
+# Executors -- Project-scoped tools
+# ---------------------------------------------------------------------------
+
+
+async def execute_read_file(
+    path: str,
+    start_line: int = 1,
+    max_lines: int = 100,
+) -> str:
+    """Read a file from the active project with line numbers."""
+    project_root = _get_active_project_path()
+    if project_root is None:
+        return json.dumps({"success": False, "error": _NO_ACTIVE_PROJECT_MSG})
+
+    resolved, err = _validate_project_path(project_root, path)
+    if err:
+        return json.dumps({"success": False, "error": err})
+
+    if not resolved.is_file():
+        return json.dumps({"success": False, "error": f"File not found: {path}"})
+
+    # Size guard
+    try:
+        size = resolved.stat().st_size
+    except OSError as e:
+        return json.dumps({"success": False, "error": f"Cannot stat file: {e}"})
+
+    if size > _MAX_READ_FILE_SIZE:
+        return json.dumps(
+            {
+                "success": False,
+                "error": f"File too large ({size:,} bytes). Maximum is {_MAX_READ_FILE_SIZE:,} bytes.",
+            }
+        )
+
+    # Clamp parameters
+    start_line = max(1, start_line)
+    max_lines = max(1, min(max_lines, 500))
+
+    try:
+        text = resolved.read_text(encoding="utf-8", errors="replace")
+    except OSError as e:
+        return json.dumps({"success": False, "error": f"Cannot read file: {e}"})
+
+    all_lines = text.splitlines()
+    total = len(all_lines)
+    selected = all_lines[start_line - 1 : start_line - 1 + max_lines]
+
+    # Build numbered output, truncating long lines
+    numbered = []
+    for i, line in enumerate(selected, start=start_line):
+        truncated = line[:500] + "..." if len(line) > 500 else line
+        numbered.append(f"{i:>6}\t{truncated}")
+
+    content = "\n".join(numbered)
+    return json.dumps(
+        {
+            "success": True,
+            "path": path,
+            "total_lines": total,
+            "start_line": start_line,
+            "lines_returned": len(selected),
+            "content": content,
+        }
+    )
+
+
+async def execute_search_code(
+    pattern: str,
+    file_pattern: str | None = None,
+    max_results: int = 20,
+) -> str:
+    """Search code in the active project using rg (preferred) or grep."""
+    project_root = _get_active_project_path()
+    if project_root is None:
+        return json.dumps({"success": False, "error": _NO_ACTIVE_PROJECT_MSG})
+
+    if not pattern:
+        return json.dumps({"success": False, "error": "Search pattern is empty"})
+
+    max_results = max(1, min(max_results, 50))
+
+    # Decide whether to use rg or grep
+    rg_path = shutil.which("rg")
+
+    if rg_path:
+        cmd: list[str] = [
+            rg_path,
+            "--no-heading",
+            "--line-number",
+            "--color=never",
+            f"--max-count={max_results}",
+        ]
+        for d in sorted(_EXCLUDED_DIRS):
+            cmd.append(f"--glob=!{d}")
+        if file_pattern:
+            cmd.extend(["--glob", file_pattern])
+        cmd.append("--")
+        cmd.append(pattern)
+        cmd.append(".")
+    else:
+        cmd = [
+            "grep",
+            "-rn",
+            "--color=never",
+        ]
+        for d in sorted(_EXCLUDED_DIRS):
+            cmd.extend(["--exclude-dir", d])
+        if file_pattern:
+            cmd.extend(["--include", file_pattern])
+        cmd.append("--")
+        cmd.append(pattern)
+        cmd.append(".")
+
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=str(project_root),
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except subprocess.TimeoutExpired:
+        return json.dumps({"success": False, "error": "Search timed out (>15s)"})
+    except Exception as e:
+        return json.dumps({"success": False, "error": f"Search error: {e}"})
+
+    # rg returns 1 when no matches, 2 on error; grep returns 1 for no matches
+    if result.returncode == 2 and rg_path:
+        return json.dumps({"success": False, "error": result.stderr.strip() or "Search failed"})
+
+    lines = result.stdout.strip().splitlines() if result.stdout.strip() else []
+
+    # Trim leading "./" from paths
+    cleaned = []
+    for line in lines[:max_results]:
+        if line.startswith("./"):
+            line = line[2:]
+        cleaned.append(line)
+
+    return json.dumps(
+        {
+            "success": True,
+            "match_count": len(cleaned),
+            "matches": cleaned,
+        }
+    )
+
+
+async def execute_list_files(
+    pattern: str,
+    max_results: int = 50,
+) -> str:
+    """List files in the active project matching a glob pattern."""
+    project_root = _get_active_project_path()
+    if project_root is None:
+        return json.dumps({"success": False, "error": _NO_ACTIVE_PROJECT_MSG})
+
+    if not pattern:
+        return json.dumps({"success": False, "error": "Pattern is empty"})
+
+    max_results = max(1, min(max_results, 200))
+
+    try:
+        matches: list[str] = []
+        for p in sorted(project_root.glob(pattern)):
+            if not p.is_file():
+                continue
+            rel = p.relative_to(project_root)
+            if _is_excluded_path(rel):
+                continue
+            matches.append(str(rel))
+            if len(matches) >= max_results:
+                break
+    except Exception as e:
+        return json.dumps({"success": False, "error": f"Glob error: {e}"})
+
+    return json.dumps(
+        {
+            "success": True,
+            "file_count": len(matches),
+            "files": matches,
+        }
+    )
+
+
+async def execute_query_project_database(
+    database_path: str,
+    query: str,
+    parameters: list[Any] | None = None,
+) -> str:
+    """Query a SQLite database inside the active project (SELECT only)."""
+    project_root = _get_active_project_path()
+    if project_root is None:
+        return json.dumps({"success": False, "error": _NO_ACTIVE_PROJECT_MSG})
+
+    resolved, err = _validate_project_path(project_root, database_path)
+    if err:
+        return json.dumps({"success": False, "error": err, "row_count": 0, "results": []})
+
+    if not resolved.is_file():
+        return json.dumps(
+            {"success": False, "error": f"Database not found: {database_path}", "row_count": 0, "results": []}
+        )
+
+    # Validate SELECT-only
+    is_valid, val_err = _validate_select_query(query)
+    if not is_valid:
+        return json.dumps({"success": False, "error": val_err, "row_count": 0, "results": []})
+
+    try:
+        conn = sqlite3.connect(str(resolved), timeout=5.0)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        clean_query = query.rstrip(";")
+        params = parameters or []
+
+        logger.info(f"Executing project DB query on {database_path}: {clean_query}")
+        cursor.execute(clean_query, params)
+        rows = cursor.fetchall()
+        results = [dict(row) for row in rows]
+        conn.close()
+
+        return json.dumps({"success": True, "row_count": len(results), "results": results})
+
+    except sqlite3.Error as e:
+        logger.error(f"Project DB error: {e}", exc_info=True)
+        return json.dumps({"success": False, "error": f"Database error: {str(e)}", "row_count": 0, "results": []})
+    except Exception as e:
+        logger.error(f"Unexpected error querying project DB: {e}", exc_info=True)
+        return json.dumps({"success": False, "error": f"Unexpected error: {str(e)}", "row_count": 0, "results": []})
+
+
+async def execute_project_info() -> str:
+    """Return the active project's profile from .amiga/profile.json."""
+    project_root = _get_active_project_path()
+    if project_root is None:
+        return json.dumps({"success": False, "error": _NO_ACTIVE_PROJECT_MSG})
+
+    profile_path = project_root / ".amiga" / "profile.json"
+    if not profile_path.is_file():
+        return json.dumps(
+            {
+                "success": True,
+                "project_path": str(project_root),
+                "profile": None,
+                "message": "No .amiga/profile.json found. Run 'amiga scan' to generate a project profile.",
+            }
+        )
+
+    try:
+        profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        return json.dumps({"success": False, "error": f"Failed to read profile: {e}"})
+
+    return json.dumps(
+        {
+            "success": True,
+            "project_path": str(project_root),
+            "profile": profile,
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tool dispatcher
+# ---------------------------------------------------------------------------
+
 
 async def execute_tool(tool_name: str, tool_input: dict[str, Any]) -> str:
     """
@@ -412,12 +888,39 @@ async def execute_tool(tool_name: str, tool_input: dict[str, Any]) -> str:
         )
     elif tool_name == "web_search":
         return await execute_websearch(
-            query=tool_input.get("query", ""), num_results=tool_input.get("num_results", 5)
+            query=tool_input.get("query", ""),
+            num_results=tool_input.get("num_results", 5),
         )
     elif tool_name == "git_query":
         return await execute_git_query(
-            operation=tool_input.get("operation", "status"), options=tool_input.get("options")
+            operation=tool_input.get("operation", "status"),
+            options=tool_input.get("options"),
         )
+    elif tool_name == "read_file":
+        return await execute_read_file(
+            path=tool_input.get("path", ""),
+            start_line=tool_input.get("start_line", 1),
+            max_lines=tool_input.get("max_lines", 100),
+        )
+    elif tool_name == "search_code":
+        return await execute_search_code(
+            pattern=tool_input.get("pattern", ""),
+            file_pattern=tool_input.get("file_pattern"),
+            max_results=tool_input.get("max_results", 20),
+        )
+    elif tool_name == "list_files":
+        return await execute_list_files(
+            pattern=tool_input.get("pattern", ""),
+            max_results=tool_input.get("max_results", 50),
+        )
+    elif tool_name == "query_project_database":
+        return await execute_query_project_database(
+            database_path=tool_input.get("database_path", ""),
+            query=tool_input.get("query", ""),
+            parameters=tool_input.get("parameters"),
+        )
+    elif tool_name == "project_info":
+        return await execute_project_info()
     else:
         logger.error(f"Unknown tool requested: {tool_name}")
         return json.dumps({"success": False, "error": f"Unknown tool: {tool_name}"})

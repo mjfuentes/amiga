@@ -44,8 +44,11 @@ class TestToolDefinitions:
 
     def test_available_tools_list(self):
         """Test AVAILABLE_TOOLS contains expected tools."""
-        assert len(AVAILABLE_TOOLS) == 1
-        assert AVAILABLE_TOOLS[0] == SQLITE_TOOL
+        tool_names = {t["name"] for t in AVAILABLE_TOOLS}
+        assert "query_database" in tool_names
+        assert "web_search" in tool_names
+        assert "git_query" in tool_names
+        assert len(AVAILABLE_TOOLS) >= 3
 
 
 class TestQueryValidation:
