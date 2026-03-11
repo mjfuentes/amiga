@@ -855,6 +855,35 @@ cmd_doctor() {
     return 0
 }
 
+cmd_init() {
+    local project_dir="${1:-$(pwd)}"
+
+    # Don't init inside AMIGA itself
+    if [ "$(cd "$project_dir" && pwd)" = "$SCRIPT_DIR" ]; then
+        err "Cannot init AMIGA inside its own directory."
+        dim "Run this from your project directory: cd my-project && amiga init"
+        exit 1
+    fi
+
+    activate_venv
+    "$VENV_DIR/bin/python" -m projects.cli init "$project_dir"
+}
+
+cmd_projects() {
+    activate_venv
+    "$VENV_DIR/bin/python" -m projects.cli list
+}
+
+cmd_switch() {
+    if [ $# -eq 0 ]; then
+        err "Usage: amiga switch <project-name>"
+        cmd_projects
+        exit 1
+    fi
+    activate_venv
+    "$VENV_DIR/bin/python" -m projects.cli switch "$1"
+}
+
 cmd_help() {
     echo ""
     echo "${BOLD}AMIGA${RESET} — Autonomous Modular Interactive Graphical Agent"
@@ -871,6 +900,9 @@ cmd_help() {
     echo "  ${CYAN}update${RESET}             Pull latest, update deps, rebuild frontend"
     echo "  ${CYAN}doctor${RESET}             Check system health (Python, Node, deps, env, ...)"
     echo "  ${CYAN}db${RESET} \"<query>\"        Run a SQLite query against the task database"
+    echo "  ${CYAN}init${RESET}               Scan and register current directory as a project"
+    echo "  ${CYAN}projects${RESET}           List registered projects (* = active)"
+    echo "  ${CYAN}switch${RESET} <name>       Switch active project"
     echo "  ${CYAN}install-daemon${RESET}     Install launchd daemon (macOS, start on login)"
     echo "  ${CYAN}uninstall-daemon${RESET}   Remove launchd daemon"
     echo "  ${CYAN}uninstall${RESET}          Remove AMIGA from your system (keeps files)"
@@ -882,6 +914,9 @@ cmd_help() {
     echo "  ./amiga install-daemon       # Auto-start on login"
     echo "  ./amiga update               # Pull, rebuild, restart"
     echo "  ./amiga db \"SELECT task_id, status FROM tasks ORDER BY updated_at DESC LIMIT 5;\""
+    echo "  cd ~/Projects/my-app && amiga init"
+    echo "  amiga projects"
+    echo "  amiga switch my-app"
     echo ""
 }
 
@@ -901,6 +936,9 @@ case "$COMMAND" in
     update)            cmd_update "$@" ;;
     doctor)            cmd_doctor "$@" ;;
     db)                cmd_db "$@" ;;
+    init)              cmd_init "$@" ;;
+    projects)          cmd_projects "$@" ;;
+    switch)            cmd_switch "$@" ;;
     install-daemon)    cmd_install_daemon "$@" ;;
     uninstall-daemon)  cmd_uninstall_daemon "$@" ;;
     uninstall)         cmd_uninstall "$@" ;;
