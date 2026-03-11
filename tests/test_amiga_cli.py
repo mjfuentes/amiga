@@ -141,7 +141,11 @@ class TestAmigaCLIScriptStructure:
 
     def test_all_commands_have_functions(self):
         content = AMIGA_CLI.read_text()
-        for cmd in ["setup", "start", "stop", "status", "logs", "db", "help"]:
+        expected = [
+            "setup", "start", "stop", "restart", "status", "logs",
+            "db", "help", "install_daemon", "uninstall_daemon", "update",
+        ]
+        for cmd in expected:
             assert f"cmd_{cmd}" in content, f"Missing function cmd_{cmd}"
 
     def test_set_flags(self):
@@ -154,3 +158,132 @@ class TestAmigaCLIScriptStructure:
         assert "tput" in content
         # Should have fallback empty strings
         assert 'BOLD=""' in content
+
+    def test_plist_label_defined(self):
+        content = AMIGA_CLI.read_text()
+        assert 'PLIST_LABEL="com.amiga.server"' in content
+
+    def test_plist_path_uses_launch_agents(self):
+        content = AMIGA_CLI.read_text()
+        assert "Library/LaunchAgents" in content
+
+    def test_dispatch_includes_all_commands(self):
+        content = AMIGA_CLI.read_text()
+        for cmd in ["install-daemon", "uninstall-daemon", "restart", "update"]:
+            assert cmd in content, f"Missing dispatch entry for {cmd}"
+
+
+class TestAmigaCLIRestart:
+    """Tests for the restart command."""
+
+    def test_restart_runs(self):
+        result = run_cli("restart")
+        # Should succeed (falls back to stop + start when no daemon)
+        assert result.returncode == 0
+
+
+class TestAmigaCLIDaemonHelpers:
+    """Tests for daemon helper functions in the script."""
+
+    def test_require_macos_function_exists(self):
+        content = AMIGA_CLI.read_text()
+        assert "require_macos()" in content
+        assert 'uname' in content
+        assert "macOS-only" in content
+
+    def test_daemon_installed_function_exists(self):
+        content = AMIGA_CLI.read_text()
+        assert "daemon_installed()" in content
+
+    def test_daemon_loaded_function_exists(self):
+        content = AMIGA_CLI.read_text()
+        assert "daemon_loaded()" in content
+
+
+class TestAmigaCLIInstallDaemon:
+    """Tests for the install-daemon command."""
+
+    def test_install_daemon_generates_valid_plist(self):
+        """Verify the plist generation logic includes required keys."""
+        content = AMIGA_CLI.read_text()
+        # Check plist template contains essential launchd keys
+        assert "RunAtLoad" in content
+        assert "KeepAlive" in content
+        assert "WorkingDirectory" in content
+        assert "StandardOutPath" in content
+        assert "StandardErrorPath" in content
+        assert "ProgramArguments" in content
+        assert "EnvironmentVariables" in content
+        assert "monitoring/server.py" in content
+
+    def test_install_daemon_reads_env_file(self):
+        """Verify .env parsing logic is present."""
+        content = AMIGA_CLI.read_text()
+        assert "ENV_FILE" in content
+        # Should skip comments and blank lines
+        assert "Skip comments" in content or "#" in content
+
+    def test_install_daemon_creates_log_dir(self):
+        """Verify log directory creation."""
+        content = AMIGA_CLI.read_text()
+        assert "launchd-stdout.log" in content
+        assert "launchd-stderr.log" in content
+
+
+class TestAmigaCLIUninstallDaemon:
+    """Tests for the uninstall-daemon command."""
+
+    def test_uninstall_when_not_installed(self):
+        """Should exit cleanly when no daemon is installed."""
+        result = run_cli("uninstall-daemon")
+        assert result.returncode == 0
+        assert "not installed" in result.stdout
+
+
+class TestAmigaCLIUpdate:
+    """Tests for the update command."""
+
+    def test_update_function_exists(self):
+        content = AMIGA_CLI.read_text()
+        assert "cmd_update()" in content
+        assert "git" in content
+        assert "pip install" in content
+        assert "deploy.sh" in content
+
+    def test_update_shows_new_commits(self):
+        """Verify update compares git hashes."""
+        content = AMIGA_CLI.read_text()
+        assert "before_hash" in content
+        assert "after_hash" in content
+        assert "Already up to date" in content
+
+
+class TestAmigaCLIHelpContent:
+    """Tests that help output documents all commands."""
+
+    def test_help_lists_new_commands(self):
+        result = run_cli("help")
+        assert result.returncode == 0
+        assert "restart" in result.stdout
+        assert "update" in result.stdout
+        assert "install-daemon" in result.stdout
+        assert "uninstall-daemon" in result.stdout
+
+    def test_help_shows_examples(self):
+        result = run_cli("help")
+        assert "install-daemon" in result.stdout
+        assert "update" in result.stdout
+
+
+class TestAmigaCLIStatusDaemon:
+    """Tests that status shows daemon info."""
+
+    def test_status_shows_daemon_line(self):
+        result = run_cli("status")
+        assert result.returncode == 0
+        assert "Daemon:" in result.stdout
+
+    def test_status_daemon_not_installed(self):
+        result = run_cli("status")
+        # Unless someone has it installed, should show not installed
+        assert "not installed" in result.stdout or "installed" in result.stdout

@@ -9,6 +9,8 @@ LOG_PATH="$SCRIPT_DIR/logs/monitoring.log"
 ENV_FILE="$SCRIPT_DIR/.env"
 ENV_EXAMPLE="$SCRIPT_DIR/.env.example"
 PORT=3000
+PLIST_LABEL="com.amiga.server"
+PLIST_PATH="$HOME/Library/LaunchAgents/${PLIST_LABEL}.plist"
 
 # ---------------------------------------------------------------------------
 # Colors (graceful degradation if tput unavailable)
@@ -40,6 +42,21 @@ server_pid() {
 
 is_running() {
     [ -n "$(server_pid)" ]
+}
+
+daemon_installed() {
+    [ -f "$PLIST_PATH" ]
+}
+
+daemon_loaded() {
+    launchctl list "$PLIST_LABEL" >/dev/null 2>&1
+}
+
+require_macos() {
+    if [ "$(uname)" != "Darwin" ]; then
+        err "Daemon install is macOS-only. Use systemd manually."
+        exit 1
+    fi
 }
 
 activate_venv() {
@@ -230,12 +247,43 @@ cmd_start() {
         exit 0
     fi
 
-    activate_venv
-    info "Starting server..."
-    (cd "$SCRIPT_DIR" && bash deploy.sh chat)
+    if daemon_installed; then
+        info "Starting via launchd daemon..."
+        launchctl load "$PLIST_PATH" 2>/dev/null || true
+        sleep 1
+        if is_running; then
+            info "Server started (PID: $(server_pid))"
+            dim "http://localhost:$PORT"
+        else
+            warn "Daemon loaded but server not yet responding. Check logs:"
+            dim "tail -f $SCRIPT_DIR/logs/launchd-stderr.log"
+        fi
+    else
+        activate_venv
+        info "Starting server..."
+        (cd "$SCRIPT_DIR" && bash deploy.sh chat)
+    fi
 }
 
 cmd_stop() {
+    if daemon_installed && daemon_loaded; then
+        info "Stopping via launchd daemon..."
+        launchctl unload "$PLIST_PATH" 2>/dev/null || true
+        sleep 1
+        if ! is_running; then
+            info "Stopped"
+        else
+            warn "Daemon unloaded but process still running. Force killing..."
+            local pids
+            pids=$(server_pid)
+            if [ -n "$pids" ]; then
+                echo "$pids" | xargs kill -9 2>/dev/null || true
+            fi
+            info "Stopped"
+        fi
+        return
+    fi
+
     if ! is_running; then
         info "Server is not running"
         exit 0
@@ -260,6 +308,17 @@ cmd_status() {
     echo ""
     echo "${BOLD}AMIGA Status${RESET}"
     echo ""
+
+    # Daemon
+    if daemon_installed; then
+        if daemon_loaded; then
+            echo "  Daemon:  ${GREEN}installed & loaded${RESET}"
+        else
+            echo "  Daemon:  ${YELLOW}installed (not loaded)${RESET}"
+        fi
+    else
+        echo "  Daemon:  ${DIM}not installed${RESET}"
+    fi
 
     # Server
     if is_running; then
@@ -311,6 +370,168 @@ cmd_db() {
     sqlite3 -header -column "$DB_PATH" "$1"
 }
 
+cmd_restart() {
+    if daemon_installed && daemon_loaded; then
+        info "Restarting via launchd..."
+        launchctl kickstart -k "gui/$(id -u)/$PLIST_LABEL"
+        sleep 1
+        if is_running; then
+            info "Server restarted (PID: $(server_pid))"
+        else
+            warn "Restart issued. Server may still be starting up."
+            dim "tail -f $SCRIPT_DIR/logs/launchd-stderr.log"
+        fi
+    else
+        cmd_stop
+        sleep 1
+        cmd_start
+    fi
+}
+
+cmd_install_daemon() {
+    require_macos
+
+    if daemon_installed; then
+        warn "Daemon already installed at $PLIST_PATH"
+        dim "Run './amiga uninstall-daemon' first to reinstall."
+        exit 1
+    fi
+
+    # Ensure log directory exists
+    mkdir -p "$SCRIPT_DIR/logs"
+
+    # Ensure venv exists
+    if [ ! -d "$VENV_DIR" ]; then
+        err "No venv found. Run './amiga setup' first."
+        exit 1
+    fi
+
+    # Build environment dict entries from .env
+    local env_entries=""
+    if [ -f "$ENV_FILE" ]; then
+        while IFS= read -r line || [ -n "$line" ]; do
+            # Skip comments and blank lines
+            [[ "$line" =~ ^[[:space:]]*# ]] && continue
+            [[ -z "$line" ]] && continue
+            local key="${line%%=*}"
+            local value="${line#*=}"
+            env_entries="${env_entries}        <key>${key}</key>
+        <string>${value}</string>
+"
+        done < "$ENV_FILE"
+    fi
+
+    info "Creating launchd plist..."
+
+    cat > "$PLIST_PATH" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>${PLIST_LABEL}</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>${VENV_DIR}/bin/python</string>
+        <string>monitoring/server.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>${SCRIPT_DIR}</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONPATH</key>
+        <string>${SCRIPT_DIR}</string>
+${env_entries}    </dict>
+
+    <key>StandardOutPath</key>
+    <string>${SCRIPT_DIR}/logs/launchd-stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>${SCRIPT_DIR}/logs/launchd-stderr.log</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+</dict>
+</plist>
+PLIST
+
+    info "Loading daemon..."
+    launchctl load "$PLIST_PATH"
+
+    sleep 1
+    if is_running; then
+        info "Daemon installed and running (PID: $(server_pid))"
+    else
+        info "Daemon installed and loaded"
+        dim "Server may take a moment to start."
+        dim "Check: tail -f $SCRIPT_DIR/logs/launchd-stderr.log"
+    fi
+
+    dim "Plist: $PLIST_PATH"
+    dim "The server will start automatically on login."
+}
+
+cmd_uninstall_daemon() {
+    require_macos
+
+    if ! daemon_installed; then
+        info "Daemon is not installed"
+        exit 0
+    fi
+
+    info "Unloading daemon..."
+    launchctl unload "$PLIST_PATH" 2>/dev/null || true
+
+    info "Removing plist..."
+    rm -f "$PLIST_PATH"
+
+    info "Daemon uninstalled"
+}
+
+cmd_update() {
+    step "Pulling latest changes"
+    local before_hash
+    before_hash=$(git -C "$SCRIPT_DIR" rev-parse HEAD)
+    git -C "$SCRIPT_DIR" pull
+
+    local after_hash
+    after_hash=$(git -C "$SCRIPT_DIR" rev-parse HEAD)
+
+    if [ "$before_hash" = "$after_hash" ]; then
+        info "Already up to date"
+    else
+        echo ""
+        info "New commits:"
+        git -C "$SCRIPT_DIR" log --oneline "${before_hash}..${after_hash}"
+    fi
+
+    step "Updating dependencies"
+    activate_venv
+    pip install -r "$SCRIPT_DIR/requirements.txt" --quiet
+    info "Dependencies updated"
+
+    step "Rebuilding frontend"
+    if [ -f "$SCRIPT_DIR/deploy.sh" ]; then
+        (cd "$SCRIPT_DIR" && bash deploy.sh chat)
+    else
+        warn "deploy.sh not found. Skipping frontend build."
+    fi
+
+    if daemon_installed && daemon_loaded; then
+        step "Restarting daemon"
+        cmd_restart
+    fi
+
+    echo ""
+    info "Update complete"
+}
+
 cmd_help() {
     echo ""
     echo "${BOLD}AMIGA${RESET} — Autonomous Modular Interactive Graphical Agent"
@@ -318,17 +539,23 @@ cmd_help() {
     echo "${BOLD}Usage:${RESET} ./amiga <command>"
     echo ""
     echo "${BOLD}Commands:${RESET}"
-    echo "  ${CYAN}setup${RESET}            Interactive onboarding (venv, deps, API keys, build)"
-    echo "  ${CYAN}start${RESET}            Start the monitoring server"
-    echo "  ${CYAN}stop${RESET}             Stop the server"
-    echo "  ${CYAN}status${RESET}           Show server, tasks, and cost"
-    echo "  ${CYAN}logs${RESET}             Tail the monitoring log"
-    echo "  ${CYAN}db${RESET} \"<query>\"      Run a SQLite query against the task database"
-    echo "  ${CYAN}help${RESET}             Show this message"
+    echo "  ${CYAN}setup${RESET}              Interactive onboarding (venv, deps, API keys, build)"
+    echo "  ${CYAN}start${RESET}              Start the monitoring server"
+    echo "  ${CYAN}stop${RESET}               Stop the server"
+    echo "  ${CYAN}restart${RESET}            Restart the server"
+    echo "  ${CYAN}status${RESET}             Show server, daemon, tasks, and cost"
+    echo "  ${CYAN}logs${RESET}               Tail the monitoring log"
+    echo "  ${CYAN}update${RESET}             Pull latest, update deps, rebuild frontend"
+    echo "  ${CYAN}db${RESET} \"<query>\"        Run a SQLite query against the task database"
+    echo "  ${CYAN}install-daemon${RESET}     Install launchd daemon (macOS, start on login)"
+    echo "  ${CYAN}uninstall-daemon${RESET}   Remove launchd daemon"
+    echo "  ${CYAN}help${RESET}               Show this message"
     echo ""
     echo "${BOLD}Examples:${RESET}"
     echo "  ./amiga setup"
     echo "  ./amiga start"
+    echo "  ./amiga install-daemon       # Auto-start on login"
+    echo "  ./amiga update               # Pull, rebuild, restart"
     echo "  ./amiga db \"SELECT task_id, status FROM tasks ORDER BY updated_at DESC LIMIT 5;\""
     echo ""
 }
@@ -340,13 +567,17 @@ COMMAND="${1:-help}"
 shift || true
 
 case "$COMMAND" in
-    setup)   cmd_setup "$@" ;;
-    start)   cmd_start "$@" ;;
-    stop)    cmd_stop "$@" ;;
-    status)  cmd_status "$@" ;;
-    logs)    cmd_logs "$@" ;;
-    db)      cmd_db "$@" ;;
-    help|-h|--help) cmd_help ;;
+    setup)             cmd_setup "$@" ;;
+    start)             cmd_start "$@" ;;
+    stop)              cmd_stop "$@" ;;
+    restart)           cmd_restart "$@" ;;
+    status)            cmd_status "$@" ;;
+    logs)              cmd_logs "$@" ;;
+    update)            cmd_update "$@" ;;
+    db)                cmd_db "$@" ;;
+    install-daemon)    cmd_install_daemon "$@" ;;
+    uninstall-daemon)  cmd_uninstall_daemon "$@" ;;
+    help|-h|--help)    cmd_help ;;
     *)
         err "Unknown command: $COMMAND"
         cmd_help
