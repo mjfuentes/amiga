@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/coverage-70%25-yellow?style=flat-square" alt="Coverage Badge"/>
+  <img src="https://img.shields.io/badge/coverage-80%25%2B-brightgreen?style=flat-square" alt="Coverage Badge"/>
   <img src="https://img.shields.io/badge/tests-passing-brightgreen?style=flat-square" alt="Tests Badge"/>
   <img src="https://img.shields.io/badge/python-3.12%2B-blue?style=flat-square" alt="Python Badge"/>
 </p>
@@ -22,9 +22,9 @@ The interface is a web chat. The implementation is automated. The monitoring is 
 
 ## Core Components
 
-**Agent Orchestration**: 19 specialized agents coordinated through a task system. Each handles specific aspects - implementation, testing, validation, debugging. They operate in isolated git worktrees created automatically by the SDK.
+**Agent Orchestration**: 16 specialized agents coordinated through a task system. Each handles specific aspects - implementation, testing, validation, debugging. They operate in isolated git worktrees created natively by the SDK via the `--worktree` flag.
 
-**Web Interface**: Real-time chat at `localhost:3000/chat` for interaction. Monitoring dashboard at `localhost:3000` for observability. No code editor - just conversations and results.
+**Web Interface**: Real-time chat at `localhost:3000` for interaction. Monitoring dashboard at `localhost:3000/dashboard` for observability. No code editor - just conversations and results.
 
 **Self-Improvement**: SQLite database tracks tool usage, failures, and patterns. The system analyzes its own errors and updates agent behavior autonomously.
 
@@ -45,21 +45,46 @@ cp .env.example .env
 ./deploy.sh chat
 ```
 
-Access: `localhost:3000/chat`
+Access: `localhost:3000`
 
 ## Architecture
 
-**Models**: Haiku for routing (effort=low, max $0.50), Sonnet for implementation (effort=high, max $5.00), Opus for deep debugging (effort=max, max $10.00). Cost-aware selection with per-task budget caps.
+**Models**: Haiku for routing (effort=low, max $0.50), Sonnet 4.6 for implementation (effort=high, max $5.00), Opus 4.6 for deep debugging (effort=max, max $10.00). Cost-aware selection with per-task budget caps.
 
-**Agents**: orchestrator (delegation), code_agent (Python), frontend_agent (UI/UX), research_agent (analysis), plus QA validators, debuggers, and git workflow managers. Agent definitions live in `.claude/agents/*.md` and are loaded automatically via `claude/agent_loader.py`.
+**Agents**: 16 agents defined in `.claude/agents/*.md`, loaded via `claude/agent_loader.py` which parses YAML frontmatter for model aliases, memory scope (`user`/`project`), `permissionMode`, effort level, and isolation settings.
 
-**Hooks**: Python SDK callbacks (`claude/sdk_hooks.py`) replace shell script hooks. `PreToolUse` blocks dangerous git operations (`--no-verify`, `--force`, `--hard`). `PostToolUse` records tool completions to SQLite. `Stop` marks session end.
+| Agent | Role | Model |
+|---|---|---|
+| orchestrator | Task coordination and delegation | inherit |
+| code_agent | Python backend implementation | sonnet |
+| frontend_agent | UI/UX development with Playwright MCP | sonnet |
+| research_agent | Analysis, proposals, web research | opus |
+| debug-agent | Targeted bug investigation | sonnet |
+| task-decomposer | Break complex requests into subtasks | sonnet |
+| ultrathink-debugger | Deep root cause analysis (expensive, use sparingly) | opus |
+| self-improvement-agent | Analyze errors, update agent behavior autonomously | opus |
+| Jenny | Verify implementation matches specifications | sonnet |
+| karen | Reality checks on project completion | sonnet |
+| task-completion-validator | Validate tasks actually work end-to-end | sonnet |
+| claude-md-compliance-checker | Ensure CLAUDE.md conventions are followed | sonnet |
+| code-quality-pragmatist | Detect over-engineering and complexity | sonnet |
+| ui-comprehensive-tester | Comprehensive UI testing with Playwright MCP | sonnet |
+| git-worktree | Create and manage isolated task worktrees | sonnet |
+| git-merge | Merge task branches back to main | sonnet |
+
+QA/read-only agents use `permissionMode: plan`. Learning agents (self-improvement, compliance, quality) use `memory: project` for persistent context.
+
+**Skills**: Three shared skills in `.claude/skills/` — `coding-conventions`, `testing-requirements`, `git-workflow` — injected automatically into relevant agents to enforce consistent behavior across the system.
+
+**Hooks**: Python SDK callbacks (`claude/sdk_hooks.py`) replace the shell script hooks that previously lived in `.claude/hooks/`. `PreToolUse` blocks dangerous git operations (`--no-verify`, `--force`, `--hard`). `PostToolUse` records tool completions to SQLite. `Stop` marks session end. `SubagentStart`/`SubagentStop` track nested agent execution. All callbacks are wrapped in try/except — hook exceptions cannot crash the SDK transport layer. Shell hooks in `.claude/hooks/` remain for local developer-experience features (tmux reminders, Prettier auto-format) but no longer handle data collection.
+
+**Worktrees**: Each task runs in an isolated git worktree under `/tmp/agentlab-worktrees/`. The SDK creates the branch `task/{task_id}` automatically via the `--worktree` flag in `ClaudeSDKSession.execute_task()`. The `git-worktree` agent manages worktree lifecycle and the `git-merge` agent handles merging back to main. Worktrees are preserved in `/tmp/` for post-task inspection and cleared on system restart.
 
 **Persistence**: SQLite tracks tasks, tool usage, errors. Logs in `logs/`, session data in `data/`. Query patterns in `CLAUDE.md`.
 
 **Auth**: Session-backed JWT tokens with refresh support. Login returns both `access_token` and `refresh_token`. Sessions stored in SQLite with inactivity tracking.
 
-**Testing**: 57 modules. Pre-commit hooks enforce quality. Coverage targets: 70%+ overall, 80%+ critical paths.
+**Testing**: 12 test modules. Pre-commit hooks enforce quality. Coverage targets: 80%+ overall, 100% for utilities.
 
 ## Development
 
@@ -104,6 +129,6 @@ Issues and suggestions welcome. Development workflow in `CLAUDE.md`.
 
 ---
 
-**Production Ready** | 57 test modules | 19 agents | Claude Agent SDK
+**Production Ready** | 12 test modules | 16 agents | 3 shared skills | SDK hooks | Worktree isolation | Claude Agent SDK
 
 *Intent over implementation*
