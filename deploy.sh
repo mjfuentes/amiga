@@ -192,7 +192,7 @@ restart_server() {
 
     # Start monitoring server
     cd "$SCRIPT_DIR/monitoring"
-    nohup "$PYTHON" server.py > ../logs/monitoring.log 2>&1 &
+    env -u CLAUDECODE nohup "$PYTHON" server.py > ../logs/monitoring.log 2>&1 &
     MONITOR_PID=$!
     cd "$SCRIPT_DIR"
 
