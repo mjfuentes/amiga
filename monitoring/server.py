@@ -10,10 +10,15 @@ from pathlib import Path  # noqa: E402
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import os  # noqa: E402 - must be first for env cleanup
+
+# Remove CLAUDECODE env var to prevent "nested session" detection.
+# Server may be started from within a Claude Code session via deploy.sh.
+os.environ.pop("CLAUDECODE", None)
+
 import asyncio  # noqa: E402
 import json  # noqa: E402
 import logging  # noqa: E402
-import os  # noqa: E402
 import signal  # noqa: E402
 import time  # noqa: E402
 import uuid  # noqa: E402
@@ -417,6 +422,10 @@ async def _execute_web_chat_task(task, user_id: str, session_id: str = "default"
                 room=room_id,
             )
 
+        # Heartbeat callback: touch updated_at so stale detector knows task is alive
+        def send_heartbeat():
+            asyncio.create_task(task_manager.touch_task(task.task_id))
+
         # Execute using Claude session pool
         # Prepend bot repo path to context if available
         task_context = task.context or ""
@@ -431,6 +440,7 @@ async def _execute_web_chat_task(task, user_id: str, session_id: str = "default"
             context=task_context,
             pid_callback=save_pid_immediately,
             progress_callback=send_progress_update,
+            heartbeat_callback=send_heartbeat,
             effort=TASK_EFFORT,
             max_budget_usd=TASK_MAX_BUDGET,
         )
@@ -3765,6 +3775,80 @@ def run_session_cleanup():
     logger.info("Session cleanup background task started")
 
 
+def run_stale_task_detector():
+    """Background thread that marks stale 'running' tasks as failed.
+
+    A task is considered stale if it has been in 'running' status with no
+    tool_usage activity AND no updated_at change for longer than the threshold.
+    The SDK can spend long periods thinking between tool calls, so we use
+    a generous threshold and also check updated_at (set by progress callbacks).
+    """
+    import threading
+
+    STALE_THRESHOLD_MINUTES = 30
+    CHECK_INTERVAL_SECONDS = 120
+
+    def detector_loop():
+        # Skip first check cycle to avoid killing tasks on server restart
+        time.sleep(CHECK_INTERVAL_SECONDS)
+        while True:
+            try:
+                task_manager.db.conn.rollback()
+                cursor = task_manager.db.conn.cursor()
+
+                threshold_days = STALE_THRESHOLD_MINUTES / 1440.0
+
+                # Find running tasks where BOTH updated_at and last tool activity
+                # are older than threshold (avoids false positives from long thinking)
+                # Use 'localtime' because Python stores timestamps via
+                # datetime.now().isoformat() which is local time, not UTC.
+                cursor.execute(
+                    """
+                    SELECT t.task_id, t.updated_at,
+                           MAX(tu.timestamp) as last_tool_activity
+                    FROM tasks t
+                    LEFT JOIN tool_usage tu ON t.task_id = tu.task_id
+                    WHERE t.status = 'running'
+                      AND julianday('now', 'localtime') - julianday(t.updated_at) > ?
+                    GROUP BY t.task_id
+                    HAVING (last_tool_activity IS NULL)
+                        OR (julianday('now', 'localtime') - julianday(last_tool_activity) > ?)
+                    """,
+                    (threshold_days, threshold_days),
+                )
+                stale_tasks = cursor.fetchall()
+
+                for task_id, updated_at, last_activity in stale_tasks:
+                    logger.warning(
+                        f"Stale task detected: {task_id} "
+                        f"(updated_at={updated_at}, last_tool={last_activity})"
+                    )
+                    cursor.execute(
+                        """UPDATE tasks
+                           SET status = 'failed',
+                               error = '[stale_task] No activity for >30 minutes - process likely died',
+                               updated_at = datetime('now', 'localtime')
+                           WHERE task_id = ? AND status = 'running'""",
+                        (task_id,),
+                    )
+                    task_manager.db.conn.commit()
+
+                if stale_tasks:
+                    logger.info(
+                        f"Stale task detector: marked {len(stale_tasks)} task(s) as failed"
+                    )
+            except Exception as e:
+                logger.error(f"Error in stale task detector: {e}", exc_info=True)
+
+            time.sleep(CHECK_INTERVAL_SECONDS)
+
+    thread = threading.Thread(
+        target=detector_loop, daemon=True, name="StaleTaskDetector"
+    )
+    thread.start()
+    logger.info("Stale task detector started (threshold: %dm)", STALE_THRESHOLD_MINUTES)
+
+
 if __name__ == "__main__":
     # Setup logging
     configure_root_logger()
@@ -3778,6 +3862,7 @@ if __name__ == "__main__":
     # Setup graceful shutdown handlers
     setup_graceful_shutdown()
     run_session_cleanup()
+    run_stale_task_detector()
 
     # Check if we should enable auto-restart
     if auto_restart:

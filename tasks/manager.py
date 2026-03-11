@@ -368,6 +368,10 @@ class TaskManager:
 
         logger.debug(f"Task {task_id} activity: {message}")
 
+    async def touch_task(self, task_id: str) -> bool:
+        """Heartbeat: update updated_at without modifying activity log."""
+        return await self.db.touch_task(task_id)
+
     def get_task(self, task_id: str) -> Task | None:
         """Get task by ID"""
         task_dict = self.db.get_task(task_id)

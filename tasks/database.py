@@ -563,6 +563,17 @@ class Database:
         logger.info(f"Updated task {task_id}: {', '.join(updates)}")
         return rowcount > 0
 
+    async def touch_task(self, task_id: str) -> bool:
+        """Update only updated_at timestamp as a heartbeat signal."""
+        async with self._async_write_lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "UPDATE tasks SET updated_at = ? WHERE task_id = ? AND status = 'running'",
+                (datetime.now().isoformat(), task_id),
+            )
+            self.conn.commit()
+            return cursor.rowcount > 0
+
     async def update_task_phase(self, task_id: str, subagent_type: str, phase_num: int) -> bool:
         """
         Update task phase information (used for tracking workflow progress).
