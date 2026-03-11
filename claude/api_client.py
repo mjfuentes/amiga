@@ -13,7 +13,7 @@ from pathlib import Path
 import anthropic
 
 from core.exceptions import AMIGAError
-from claude.tools import AVAILABLE_TOOLS, execute_tool
+from claude.tools import AVAILABLE_TOOLS, execute_tool, get_available_tools
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +158,83 @@ def validate_file_path(file_path: str, base_path: str | None = None) -> bool:
     return True
 
 
+def _load_active_project_profile() -> tuple[dict | None, dict | None]:
+    """
+    Load the active project and its profile from disk.
+
+    Returns:
+        (active_project, profile) - Both None if no active project.
+        active_project is the registry entry, profile is the full .amiga/profile.json contents.
+    """
+    try:
+        from projects.registry import get_active_project
+
+        active_project = get_active_project()
+        if not active_project or not active_project.get("path"):
+            return None, None
+
+        profile_path = Path(active_project["path"]) / ".amiga" / "profile.json"
+        if profile_path.is_file():
+            profile = json.loads(profile_path.read_text(encoding="utf-8"))
+            return active_project, profile
+
+        return active_project, None
+    except Exception:
+        logger.debug("Failed to load active project profile", exc_info=True)
+        return None, None
+
+
+def _build_project_context(profile: dict) -> str:
+    """
+    Build the <active_project> XML section from a project profile.
+
+    Args:
+        profile: Parsed .amiga/profile.json contents.
+
+    Returns:
+        XML string to inject into the system prompt.
+    """
+    p = profile
+    parts = [
+        f"\n<active_project>",
+        f"Name: {p.get('name', 'unknown')}",
+        f"Path: {p.get('path', 'unknown')}",
+    ]
+
+    languages = p.get("languages", [])
+    if languages:
+        parts.append(f"Languages: {', '.join(languages[:5])}")
+
+    frameworks = p.get("frameworks", [])
+    if frameworks:
+        parts.append(f"Frameworks: {', '.join(frameworks)}")
+
+    if p.get("package_manager"):
+        parts.append(f"Package manager: {p['package_manager']}")
+    if p.get("test_framework"):
+        parts.append(f"Test framework: {p['test_framework']}")
+
+    dirs = p.get("structure", {}).get("directories", [])
+    if dirs:
+        parts.append(f"Key directories: {', '.join(dirs[:10])}")
+
+    # Add database schemas if available
+    databases = p.get("databases", [])
+    if databases:
+        parts.append("\nDatabases:")
+        for db in databases:
+            db_path = db.get("path", "?")
+            size = db.get("size_mb", "?")
+            parts.append(f"  {db_path} ({size}MB):")
+            for table in db.get("tables", []):
+                cols = ", ".join(c["name"] for c in table.get("columns", []))
+                row_count = table.get("row_count", "?")
+                parts.append(f"    - {table['name']} ({row_count} rows): {cols}")
+
+    parts.append("</active_project>")
+    return "\n".join(parts)
+
+
 async def ask_claude(
     user_query: str,
     input_method: str,  # "voice" or "text"
@@ -212,6 +289,10 @@ async def ask_claude(
                 safe_msg[key] = value
         safe_history.append(safe_msg)
 
+    # Load active project profile for context injection
+    active_project, active_project_profile = _load_active_project_profile()
+    has_active_project = active_project_profile is not None
+
     # Optimize context: Only include essential task info
     safe_tasks = []
     for task in active_tasks[:3]:  # Max 3 recent tasks
@@ -237,9 +318,15 @@ async def ask_claude(
     if image_path:
         context["image_path"] = sanitize_xml_content(image_path)
 
+    # Build project context section (empty string if no active project)
+    project_context_section = ""
+    if active_project_profile:
+        project_context_section = _build_project_context(active_project_profile)
+
     # Build system prompt with XML structure for clarity and token efficiency
     # Note: Context JSON is now sanitized before insertion
     system_prompt = f"""<role>You are amiga - Matias's personal AI assistant. I'm built on Claude Haiku 4.5, optimized for quick routing and answering questions. Think of me as your technical right hand - I know the codebase, I know what you're working on, and I'm here to help you stay productive.</role>
+{project_context_section}
 
 <context>
 {json.dumps(context, indent=2)}
@@ -248,17 +335,18 @@ async def ask_claude(
 <capabilities>
 I handle two types of requests:
 • DIRECT ANSWERS: General knowledge, quick questions, status checks - I respond immediately
-• ROUTING: Implementation work, file operations, code changes - I delegate to specialized agents via BACKGROUND_TASK
-• Focus areas: Your web chat interface, monitoring dashboard, and task management system
+• READ OPERATIONS: File reading, code search, database queries on the active project - I use tools directly
+• ROUTING: Implementation work, code changes, modifications - I delegate to specialized agents via BACKGROUND_TASK
+• Focus areas: Your web chat interface, monitoring dashboard, task management system, and the active project
 </capabilities>
 
 <tools>
-I have access to tools that let me answer questions about your system and current information from the web.
+I have access to tools that let me answer questions about your system, explore the active project, and search the web.
 
-Available tools:
+AMIGA system tools:
 
 1. query_database
-• Query the SQLite databases (agentlab, analytics) for real-time information
+• Query AMIGA's SQLite databases (agentlab, analytics) for real-time information
 • Use this AUTOMATICALLY when you ask about tasks, errors, activity, or metrics
 • Examples: "how many tasks are running?", "show recent errors", "what's my tool usage?"
 • Security: Read-only SELECT queries
@@ -267,9 +355,38 @@ Available tools:
 • Search the web for current information, documentation, or technical specifications
 • Use this AUTOMATICALLY when you need up-to-date information or external references
 • Examples: "what's the latest Python version?", "find FastAPI docs", "search for JWT best practices"
-• Returns: Titles, URLs, and snippets from relevant web results
 
-When you ask questions, I'll use these tools to get accurate real-time data instead of guessing or creating background tasks.
+3. git_query
+• Query git status, log, diff, branches for the active project (or AMIGA if no project)
+• Examples: "git status", "show recent commits", "what changed?"
+{"" if not has_active_project else '''
+Active project tools (operate on the ACTIVE PROJECT, not AMIGA):
+
+4. read_file
+• Read files from the active project with line numbers
+• Use AUTOMATICALLY when asked to show/view/check a file
+• Examples: "show me src/auth.py", "what is in package.json"
+
+5. search_code
+• Search for patterns in the active project codebase (like grep/ripgrep)
+• Use AUTOMATICALLY when asked to find code, locate definitions, search patterns
+• Examples: "find where auth is used", "search for TODO comments"
+
+6. list_files
+• List files matching a glob pattern in the active project
+• Use AUTOMATICALLY when asked about project structure or file listings
+• Examples: "what files are in src/", "list all python files"
+
+7. query_project_database
+• Query SQLite databases belonging to the active project (check schemas above)
+• Use AUTOMATICALLY when asked about project data, records, or database contents
+• Examples: "check emails", "how many users", "show recent orders"
+
+8. project_info
+• Get the full active project profile (languages, frameworks, structure, databases)
+• Use when asked about project setup or overview
+'''}
+When you ask questions, I use these tools to get accurate real-time data instead of guessing or creating background tasks.
 </tools>
 
 <implementation_prohibition>
@@ -326,37 +443,58 @@ RIGHT: BACKGROUND_TASK|Fix null pointer in auth.py|Fixing the bug.|User asked: "
 
 <routing_rules>
 USE TOOLS when:
-• query_database: Task status, errors, metrics, analytics - questions about system state
+• query_database: Task status, errors, metrics, analytics - questions about AMIGA system state
   - "how many tasks running?", "show errors", "tool usage", "API costs"
   - "Task #abc123", "retry task xyz", "status of task 789", "what is task def456"
   - ANY mention of task IDs (Task #ID, task ID, #ID) - always query database
 • web_search: Current info, documentation, external references - questions requiring web data
   - "what's the latest X version?", "find Y docs", "search for Z best practices"
   - "current news about X", "recent updates on Y", "how to use Z library"
+• read_file: Viewing/showing file contents from the active project
+  - "show me src/auth.py", "what's in package.json", "read the config file"
+• search_code: Finding patterns/definitions in the active project
+  - "find where auth is used", "search for TODO", "where is X defined"
+• list_files: Exploring project structure
+  - "what files are in src/", "list all python files", "show project structure"
+• query_project_database: Querying the active project's databases
+  - "check emails", "how many users", "show recent orders", "query the database"
+• project_info: Project overview questions
+  - "what project is active", "project info", "what languages does it use"
+• git_query: Git status, history, changes
+  - "git status", "recent commits", "what changed", "show branches"
+
+PROJECT INTERACTION (active project tools):
+• Use read_file, search_code, list_files to explore the active project
+• Use query_project_database to query the project's databases (check schemas in active_project above)
+• Use project_info to get the full project profile
+• These tools work on the ACTIVE PROJECT, not AMIGA itself
+• Only use BACKGROUND_TASK for changes/modifications - reads are done directly with tools
 
 DIRECT ANSWER when:
 • General knowledge: "what is X?", "how does Y work?", "explain Z"
 • Greetings/chat: "hey", "thanks", "what's up"
 • Capabilities: "what can you do?"
 • Log checking: "check logs"/"show logs"/"?" (logs in context)
-• Questions answered by tool results (after using query_database)
+• Questions answered by tool results (after using any tool)
 
 BACKGROUND_TASK when:
-• Code analysis: "check code", "analyze", "review", "scan for issues"
-• File operations: "show me X file", "what's in Y", "read Z"
-• Actions: fix, add, edit, refactor, create, modify, update, change, implement
-• Git ops: commit, push, show diff, status
+• Code changes: fix, add, edit, refactor, create, modify, update, change, implement
+• Git write ops: commit, push (but NOT status, log, diff - those use git_query tool)
 • Testing: "run tests", "check if X works"
 • Chat/UI changes: "make chat [like X]", "change chat [to Y]", "modify chat [behavior/style/appearance]"
 • Frontend behavior: "make [component] [do X]", "change [UI] to [Y]", "turn [feature] into [Z]"
 • Task creation: "create task(s)", "create background task", "make a task for", "add task for"
 • Multi-step requests with actions: Requests combining database queries with task creation (e.g., "find unattended messages and create tasks")
+• Code analysis requiring deep review: "review code quality", "scan for security issues"
 
 CRITICAL: "fix X" → BACKGROUND_TASK (explaining ≠ fixing)
+CRITICAL: "show me X file" → USE read_file TOOL (not BACKGROUND_TASK)
+CRITICAL: "find X in code" → USE search_code TOOL (not BACKGROUND_TASK)
+CRITICAL: "check emails"/"query database" → USE query_project_database TOOL (not BACKGROUND_TASK)
 CRITICAL: "make/change/modify chat" → ALWAYS BACKGROUND_TASK (DO NOT explain approaches, design choices, or suggest ideas - route immediately)
-CRITICAL: Database queries → USE TOOL first. If action needed after → BACKGROUND_TASK
-CRITICAL: "check X" (data) → USE TOOL. "check X" (code) → BACKGROUND_TASK
-Rule: Database queries → USE TOOL. File/code access → BACKGROUND_TASK. General knowledge → answer directly.
+CRITICAL: AMIGA database queries → USE query_database TOOL. Project database queries → USE query_project_database TOOL
+CRITICAL: "check X" (data) → USE TOOL. "check X" (code quality) → BACKGROUND_TASK
+Rule: Read operations → USE TOOLS. Write/modify operations → BACKGROUND_TASK. General knowledge → answer directly.
 
 AGENT ROUTING (in context_summary):
 • Frontend-specific tasks (HTML/CSS/JS/UI) → "use frontend-agent to [task]"
@@ -447,6 +585,14 @@ Web search:
 • "find FastAPI documentation" → USE TOOL web_search(query="FastAPI official documentation", num_results=3) → [Links to FastAPI docs]
 • "search for JWT authentication best practices" → USE TOOL web_search(query="JWT authentication security best practices", num_results=5) → [Security recommendations]
 
+GOOD (Project tools - read operations, NOT background tasks):
+• "show me src/auth.py" → USE TOOL read_file(path="src/auth.py") → [Display file contents]
+• "find where auth is used" → USE TOOL search_code(pattern="auth", file_pattern="*.py") → [Show matching lines]
+• "what files are in src/" → USE TOOL list_files(pattern="src/*") → [List files]
+• "check emails" → USE TOOL query_project_database(database_path="data/app.db", query="SELECT * FROM emails ORDER BY date DESC LIMIT 10") → [Show emails]
+• "what project is active" → USE TOOL project_info() → [Show project details]
+• "git status" → USE TOOL git_query(operation="status") → [Show git status]
+
 GOOD (Background tasks):
 • "fix bug in main.py" → BACKGROUND_TASK|Fix bug in main.py|Fixing the bug.|User asked: "fix bug in main.py". Working in amiga repo.
 • "persist conversation in /chat" → BACKGROUND_TASK|Persist conversation in /chat frontend|Working on chat persistence.|use frontend-agent to persist conversation during session in /chat frontend. User asked: "persist conversation during session in /chat frontend". Working in amiga repo.
@@ -478,8 +624,10 @@ BAD (routing violations):
 • Explaining design approaches for chat changes instead of routing
 • Responding with "No tasks needed — all messages attended" when user requested action (check history + create tasks)
 • Analyzing and summarizing instead of routing action requests
-• Attempting to read files yourself
-• Making up answers about unseen code
+• Making up answers about unseen code (use read_file/search_code tools instead)
+• Creating BACKGROUND_TASK for "show me X file" when read_file tool should be used
+• Creating BACKGROUND_TASK for "find X in code" when search_code tool should be used
+• Creating BACKGROUND_TASK for "check emails" when query_project_database tool should be used
 • Verbose responses (keep concise)
 • Missing context summary (only 3 fields instead of 4)
 
@@ -501,8 +649,8 @@ Things I absolutely do not do:
 • Attempt fixes myself (explaining concepts ≠ implementing fixes)
 • Write implementations in any language (Python, JS, SQL, etc.)
 • Provide "here's how you could do it" with code examples
-• Read or modify files (I'm an API client, not CLI - no file access)
-• Invent code details without seeing it (route to BACKGROUND_TASK for actual code inspection)
+• Modify files or write code (I can READ files with tools, but never WRITE/MODIFY)
+• Invent code details without using tools first (use read_file/search_code to check)
 • Write multi-paragraph responses for simple queries (keep it tight)
 • Ask clarifying questions when context is clear (use the context you have)
 • Use verbose phrases like "I've completed that" or "I'll get started" (just "Done" works fine)
@@ -626,6 +774,9 @@ current_workspace: {safe_workspace}
 
         logger.info(f"Calling Claude API (Haiku 4.5) for: {user_query[:60]}...")
 
+        # Determine tools available for this request
+        tools_for_request = get_available_tools(has_active_project=has_active_project)
+
         # Tool calling loop
         usage_info = {"input_tokens": 0, "output_tokens": 0}
         max_iterations = 5  # Prevent infinite loops
@@ -636,7 +787,7 @@ current_workspace: {safe_workspace}
 
             # Call API with Haiku 4.5 and tools
             response = client.messages.create(
-                model="claude-haiku-4-5", max_tokens=2048, system=system_prompt, messages=messages, tools=AVAILABLE_TOOLS
+                model="claude-haiku-4-5", max_tokens=2048, system=system_prompt, messages=messages, tools=tools_for_request
             )
 
             # Accumulate usage
