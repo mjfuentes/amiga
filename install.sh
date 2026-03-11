@@ -168,7 +168,7 @@ step "Running setup"
 
 if [ -f "$AMIGA_HOME/amiga" ]; then
     chmod +x "$AMIGA_HOME/amiga"
-    bash "$AMIGA_HOME/amiga" setup
+    bash "$AMIGA_HOME/amiga" setup --install-daemon
 else
     fail "amiga CLI not found at $AMIGA_HOME/amiga. The repository may be incomplete."
 fi

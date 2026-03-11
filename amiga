@@ -82,6 +82,13 @@ require_db() {
 # ---------------------------------------------------------------------------
 
 cmd_setup() {
+    local install_daemon=false
+    for arg in "$@"; do
+        case "$arg" in
+            --install-daemon) install_daemon=true ;;
+        esac
+    done
+
     echo ""
     echo "${BOLD}AMIGA Setup${RESET}"
     echo "==========="
@@ -144,13 +151,13 @@ cmd_setup() {
 
     # --- Pre-commit ---
     step "Pre-commit hooks"
-    if command -v pre-commit >/dev/null 2>&1; then
-        (cd "$SCRIPT_DIR" && pre-commit install --quiet)
+    if ! command -v pre-commit >/dev/null 2>&1; then
+        pip install pre-commit --quiet || true
+    fi
+    if (cd "$SCRIPT_DIR" && pre-commit install >/dev/null 2>&1); then
         info "Hooks installed"
     else
-        pip install pre-commit --quiet
-        (cd "$SCRIPT_DIR" && pre-commit install --quiet)
-        info "Hooks installed"
+        warn "Could not install pre-commit hooks (non-fatal)"
     fi
 
     # --- Environment file ---
@@ -189,6 +196,20 @@ cmd_setup() {
         dim "You can build manually later."
     fi
 
+    # --- Daemon (optional) ---
+    if [ "$install_daemon" = true ]; then
+        step "Installing daemon"
+        cmd_install_daemon
+    elif [[ "$(uname)" == "Darwin" ]]; then
+        echo ""
+        echo -n "Install as login daemon (auto-start on boot)? [Y/n]: "
+        read -r install_choice
+        if [[ ! "$install_choice" =~ ^[Nn] ]]; then
+            step "Installing daemon"
+            cmd_install_daemon
+        fi
+    fi
+
     # --- Done ---
     echo ""
     echo "${BOLD}${GREEN}Setup complete.${RESET}"
@@ -196,11 +217,11 @@ cmd_setup() {
     echo "  Chat UI:    ${CYAN}http://localhost:$PORT${RESET}"
     echo "  Dashboard:  ${CYAN}http://localhost:$PORT/dashboard${RESET}"
     echo ""
-    echo "  ${DIM}./amiga start    Start the server${RESET}"
-    echo "  ${DIM}./amiga stop     Stop the server${RESET}"
-    echo "  ${DIM}./amiga status   Check what's running${RESET}"
-    echo "  ${DIM}./amiga logs     Tail the logs${RESET}"
-    echo "  ${DIM}./amiga help     All commands${RESET}"
+    echo "  ${DIM}amiga start     Start the server${RESET}"
+    echo "  ${DIM}amiga stop      Stop the server${RESET}"
+    echo "  ${DIM}amiga status    Check what's running${RESET}"
+    echo "  ${DIM}amiga doctor    System health check${RESET}"
+    echo "  ${DIM}amiga help      All commands${RESET}"
     echo ""
 }
 
@@ -841,7 +862,7 @@ cmd_help() {
     echo "${BOLD}Usage:${RESET} ./amiga <command>"
     echo ""
     echo "${BOLD}Commands:${RESET}"
-    echo "  ${CYAN}setup${RESET}              Interactive onboarding (venv, deps, API keys, build)"
+    echo "  ${CYAN}setup${RESET}              Interactive onboarding (venv, deps, API keys, build, daemon)"
     echo "  ${CYAN}start${RESET}              Start the monitoring server"
     echo "  ${CYAN}stop${RESET}               Stop the server"
     echo "  ${CYAN}restart${RESET}            Restart the server"

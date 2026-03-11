@@ -23,19 +23,31 @@ AMIGA is a multi-agent coding system that turns natural language into working so
 
 ## Quick Start
 
+One command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mjfuentes/amiga/main/install.sh | bash
+```
+
+Or clone and setup manually:
+
 ```bash
 git clone git@github.com:mjfuentes/amiga.git && cd amiga
 ./amiga setup
 ```
 
-That's it. The setup wizard handles venv, dependencies, API keys, frontend build, and starts the server.
+The setup wizard handles venv, dependencies, API key, frontend build, and daemon install. No login required -- opens straight to the chat.
 
 ```bash
-./amiga start    # Start the server
-./amiga stop     # Stop it
-./amiga status   # What's running, active tasks, cost today
-./amiga logs     # Tail the logs
-./amiga db "SELECT task_id, status FROM tasks ORDER BY updated_at DESC LIMIT 5;"
+amiga start              # Start the server
+amiga stop               # Stop it
+amiga restart             # Restart
+amiga status              # Server, daemon, tasks, cost
+amiga logs                # Tail the logs
+amiga doctor             # System health check
+amiga update              # Pull latest, rebuild, restart
+amiga db "SELECT ..."     # Query the task database
+amiga uninstall           # Clean removal
 ```
 
 Open `localhost:3000`. Start talking.
@@ -87,7 +99,7 @@ Uses `claude_agent_sdk` directly. No subprocess spawning.
 
 - **Hooks** (`claude/sdk_hooks.py`): Python callbacks. `PreToolUse` blocks dangerous git ops (`--force`, `--hard`, `--no-verify`). `PostToolUse` writes tool usage to SQLite. All wrapped in try/except so a bad hook can't kill the stream.
 - **Worktrees**: Each task gets `/tmp/agentlab-worktrees/{task_id}/`. SDK creates the branch via `--worktree`. Preserved after completion for debugging. Cleared on reboot.
-- **Auth**: Session-backed JWT with refresh tokens. Sessions in SQLite.
+- **Auth**: No login on localhost (auto-login as local user). Set `AMIGA_AUTH=required` in `.env` for remote deployments to enable JWT login.
 
 ### The Flow
 
