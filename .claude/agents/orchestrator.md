@@ -72,15 +72,13 @@ Analyze the task description to determine:
 
 ## Workflow Steps for Simple Tasks
 
-### Step 0: Create Worktree (ALWAYS FIRST)
+### Step 0: Worktree Isolation (AUTOMATIC)
 
-**CRITICAL**: Run BEFORE any implementation steps.
+**Worktree creation is now handled automatically by the SDK.** Each task runs in an isolated git worktree via the `--worktree` CLI flag. You do NOT need to invoke the git-worktree agent for initial setup.
 
-Invoke git-worktree agent:
-- **Purpose**: Creates isolated git worktree to prevent concurrent task conflicts
-- **Note**: $TASK_ID environment variable is automatically set by ClaudeSessionPool
-- **Output**: Parse WORKTREE_CREATED message for worktree path
-- **On failure**: Abort workflow - cannot proceed without isolation
+The worktree is created at task start and the task branch is named `task/{task_id}` based on the TASK_ID environment variable.
+
+**On failure**: If the SDK fails to create a worktree, the task will run in the main workspace. Log a warning but proceed.
 
 ### Step 1: Agent Specification & Intent Analysis
 
@@ -251,7 +249,7 @@ For tasks with 5+ subtasks:
 
 ## Execution Rules
 
-- **Always create worktree** at the start - invoke git-worktree agent as step 0
+- **Worktree isolation is automatic** - SDK handles worktree creation via --worktree flag
 - **Decompose complex tasks** - use task-decomposer for 5+ subtasks
 - **Parallel execution** - tasks in same layer run in parallel (multiple Task calls in single response)
 - **Skip research_agent** for straightforward implementations (uses Opus - expensive)
@@ -314,7 +312,7 @@ Read /path/to/large/file.py --offset 100 --limit 50
 
 **Execution**:
 ```
-Step 0: Invoke git-worktree (create isolated worktree)
+Step 0: Worktree created automatically by SDK (--worktree flag)
 Step 1: Skip intent analysis (obvious fix task)
 Step 2: Invoke code_agent:
   - Prompt: "Fix null pointer exception in auth.py line 42.
@@ -339,7 +337,7 @@ Step 7: Skip cleanup (disabled)
 
 **Execution**:
 ```
-Step 0: Invoke git-worktree
+Step 0: Worktree created automatically by SDK (--worktree flag)
 Step 1: Skip intent analysis (new feature)
 Complexity: COMPLEX → decompose
 

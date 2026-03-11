@@ -21,7 +21,7 @@ from typing import Any
 
 import pytest
 
-from claude_code_sdk import (
+from claude_agent_sdk import (
     AssistantMessage as SDKAssistantMessage,
     ResultMessage as SDKResultMessage,
     SystemMessage as SDKSystemMessage,
@@ -190,6 +190,22 @@ class TestClaudeSDKSession:
         options = session._build_options("task-123")
         assert "max-budget-usd" not in options.extra_args
 
+    def test_build_options_with_worktree_flag(self, tmp_workspace: Path):
+        session = ClaudeSDKSession(workspace=tmp_workspace)
+        options = session._build_options("task-123", use_worktree=True)
+        assert options.extra_args["worktree"] is None
+
+    def test_build_options_without_worktree_flag(self, tmp_workspace: Path):
+        session = ClaudeSDKSession(workspace=tmp_workspace)
+        options = session._build_options("task-123", use_worktree=False)
+        assert "worktree" not in options.extra_args
+
+    def test_build_options_worktree_default_true(self, tmp_workspace: Path):
+        """use_worktree defaults to True, so worktree flag should be present."""
+        session = ClaudeSDKSession(workspace=tmp_workspace)
+        options = session._build_options("task-123")
+        assert "worktree" in options.extra_args
+
     def test_build_options_worktree_project_root(self, tmp_worktree: Path):
         session = ClaudeSDKSession(workspace=tmp_worktree)
         options = session._build_options("task-42")
@@ -277,7 +293,7 @@ class TestClaudeSDKSession:
 
     @pytest.mark.asyncio
     async def test_execute_task_sdk_error(self, tmp_workspace: Path, mock_tracker: MagicMock):
-        from claude_code_sdk import ClaudeSDKError
+        from claude_agent_sdk import ClaudeSDKError
 
         session = ClaudeSDKSession(
             workspace=tmp_workspace, usage_tracker=mock_tracker
@@ -565,7 +581,7 @@ class TestBuildOrchestratorPrompt:
 class TestCollectQueryResult:
     @pytest.mark.asyncio
     async def test_result_message(self):
-        from claude_code_sdk import ClaudeCodeOptions
+        from claude_agent_sdk import ClaudeAgentOptions
 
         result_msg = _make_result(result="Query result text")
 
@@ -573,21 +589,21 @@ class TestCollectQueryResult:
             yield result_msg
 
         with patch("claude.sdk_client.query", side_effect=mock_query):
-            options = ClaudeCodeOptions(model="haiku")
+            options = ClaudeAgentOptions(model="haiku")
             result = await _collect_query_result("test prompt", options)
 
         assert result == "Query result text"
 
     @pytest.mark.asyncio
     async def test_empty_stream(self):
-        from claude_code_sdk import ClaudeCodeOptions
+        from claude_agent_sdk import ClaudeAgentOptions
 
         async def mock_query(**kwargs):
             return
             yield  # noqa: E501
 
         with patch("claude.sdk_client.query", side_effect=mock_query):
-            options = ClaudeCodeOptions(model="haiku")
+            options = ClaudeAgentOptions(model="haiku")
             result = await _collect_query_result("test prompt", options)
 
         assert result is None
@@ -595,7 +611,7 @@ class TestCollectQueryResult:
     @pytest.mark.asyncio
     async def test_fallback_to_assistant_text(self):
         """When no ResultMessage, should fall back to assistant text."""
-        from claude_code_sdk import ClaudeCodeOptions
+        from claude_agent_sdk import ClaudeAgentOptions
 
         assistant_msg = SDKAssistantMessage(
             content=[SDKTextBlock(text="Fallback text")],
@@ -606,7 +622,7 @@ class TestCollectQueryResult:
             yield assistant_msg
 
         with patch("claude.sdk_client.query", side_effect=mock_query):
-            options = ClaudeCodeOptions(model="haiku")
+            options = ClaudeAgentOptions(model="haiku")
             result = await _collect_query_result("test prompt", options)
 
         assert result == "Fallback text"
@@ -660,7 +676,7 @@ class TestInvokeOrchestratorSdk:
 
     @pytest.mark.asyncio
     async def test_sdk_error_returns_none(self):
-        from claude_code_sdk import ClaudeSDKError
+        from claude_agent_sdk import ClaudeSDKError
 
         mock_git_tracker = MagicMock()
         mock_git_tracker.get_blocking_message.return_value = None

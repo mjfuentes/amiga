@@ -15,9 +15,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from claude_code_sdk import (
+from claude_agent_sdk import (
     AssistantMessage,
-    ClaudeCodeOptions,
+    ClaudeAgentOptions,
     ClaudeSDKError,
     ResultMessage,
     SystemMessage,
@@ -32,6 +32,14 @@ from tasks.tracker import ToolUsageTracker
 from utils.git import get_git_tracker
 
 logger = logging.getLogger(__name__)
+
+# Effort and cost defaults per task type
+ORCHESTRATOR_EFFORT = "low"
+ORCHESTRATOR_MAX_BUDGET = 0.50  # Routing should be cheap (haiku)
+TASK_EFFORT = "high"  # Implementation tasks need full reasoning
+TASK_MAX_BUDGET = 5.0  # Cap per individual task
+DEBUG_EFFORT = "max"  # Deep debugging gets maximum reasoning
+DEBUG_MAX_BUDGET = 10.0  # Debugging can be expensive
 
 
 def discover_repositories(base_path: str) -> list[str]:
@@ -92,8 +100,9 @@ class ClaudeSDKSession:
         task_id: str,
         effort: str = "high",
         max_budget_usd: float | None = None,
-    ) -> ClaudeCodeOptions:
-        """Build ClaudeCodeOptions for a task execution."""
+        use_worktree: bool = True,
+    ) -> ClaudeAgentOptions:
+        """Build ClaudeAgentOptions for a task execution."""
         project_root = self._find_project_root()
 
         env_vars = {
@@ -106,8 +115,10 @@ class ClaudeSDKSession:
             extra_args["effort"] = effort
         if max_budget_usd is not None:
             extra_args["max-budget-usd"] = str(max_budget_usd)
+        if use_worktree:
+            extra_args["worktree"] = None  # Flag-only, no value
 
-        return ClaudeCodeOptions(
+        return ClaudeAgentOptions(
             model=self.model,
             permission_mode="bypassPermissions",
             allowed_tools=["Task", "TodoWrite", "Read", "Glob", "Grep", "Bash"],
@@ -124,6 +135,7 @@ class ClaudeSDKSession:
         progress_callback: Callable[[str, int], None] | None = None,
         effort: str = "high",
         max_budget_usd: float | None = None,
+        use_worktree: bool = True,
     ) -> tuple[bool, str, str | None]:
         """Execute task via SDK query().
 
@@ -140,7 +152,7 @@ class ClaudeSDKSession:
                 task_id, "started", "Starting Claude SDK session"
             )
 
-        options = self._build_options(task_id, effort, max_budget_usd)
+        options = self._build_options(task_id, effort, max_budget_usd, use_worktree)
         self._cancel_event.clear()
 
         logger.info(f"Task {task_id}: Starting SDK query (model={self.model}, workspace={self.workspace})")
@@ -289,6 +301,7 @@ class ClaudeSDKPool:
         progress_callback: Callable[[str, int], None] | None = None,
         effort: str = "high",
         max_budget_usd: float | None = None,
+        use_worktree: bool = True,
     ) -> tuple[bool, str, str | None, str | None]:
         """Execute a task using session pool.
 
@@ -325,6 +338,7 @@ class ClaudeSDKPool:
                     progress_callback=progress_callback,
                     effort=effort,
                     max_budget_usd=max_budget_usd,
+                    use_worktree=use_worktree,
                 )
 
                 await self._finalize_task(
@@ -545,13 +559,13 @@ async def invoke_orchestrator_sdk(
     if session_id:
         env_vars["SESSION_ID"] = session_id
 
-    options = ClaudeCodeOptions(
+    options = ClaudeAgentOptions(
         model="haiku",
         permission_mode="bypassPermissions",
         cwd=bot_repository,
         env=env_vars,
         max_turns=5,
-        extra_args={"effort": "low"},
+        extra_args={"effort": ORCHESTRATOR_EFFORT, "max-budget-usd": str(ORCHESTRATOR_MAX_BUDGET)},
     )
 
     try:
@@ -597,7 +611,7 @@ def _collect_active_tasks(task_manager: Any) -> list[dict]:
 
 
 async def _collect_query_result(
-    prompt: str, options: ClaudeCodeOptions
+    prompt: str, options: ClaudeAgentOptions
 ) -> str | None:
     """Run SDK query and collect the final result text."""
     result_text: str | None = None
