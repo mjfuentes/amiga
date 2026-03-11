@@ -22,7 +22,7 @@ from datetime import datetime, timedelta  # noqa: E402
 
 import bcrypt  # noqa: E402
 import jwt as pyjwt  # noqa: E402
-from claude.code_cli import ClaudeSessionPool  # noqa: E402
+from claude.sdk_client import ClaudeSDKPool, TASK_EFFORT, TASK_MAX_BUDGET  # noqa: E402
 from core.config import get_data_dir_for_cwd, get_sessions_dir_for_cwd  # noqa: E402
 from core.session import SessionManager  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
@@ -204,8 +204,8 @@ session_manager = SessionManager(data_dir=data_dir)
 
 # Initialize Claude session pool for task execution
 # CRITICAL: Pass usage_tracker to enable session_uuid tracking for tool usage correlation
-claude_pool = ClaudeSessionPool(max_concurrent=3, usage_tracker=tool_usage_tracker)
-logger.info(f"Initialized ClaudeSessionPool with usage_tracker: {tool_usage_tracker is not None}")
+claude_pool = ClaudeSDKPool(max_concurrent=3, usage_tracker=tool_usage_tracker)
+logger.info(f"Initialized ClaudeSDKPool with usage_tracker: {tool_usage_tracker is not None}")
 
 # Initialize agent pool for task execution (shared with Telegram bot)
 agent_pool = AgentPool(max_agents=3)
@@ -411,15 +411,21 @@ async def _execute_web_chat_task(task, user_id: str, session_id: str = "default"
             )
 
         # Execute using Claude session pool
-        success, result, pid, workflow = await claude_pool.execute_task(
+        # Prepend bot repo path to context if available
+        task_context = task.context or ""
+        if BOT_REPOSITORY:
+            task_context = f"Bot codebase: {BOT_REPOSITORY}\n\n{task_context}" if task_context else f"Bot codebase: {BOT_REPOSITORY}"
+
+        success, result, session_id, workflow = await claude_pool.execute_task(
             task_id=task.task_id,
             description=task.description,
             workspace=workspace_path,
-            bot_repo_path=BOT_REPOSITORY,
             model=task.model,
-            context=task.context,
+            context=task_context,
             pid_callback=save_pid_immediately,
             progress_callback=send_progress_update,
+            effort=TASK_EFFORT,
+            max_budget_usd=TASK_MAX_BUDGET,
         )
 
         # Update task with result
@@ -595,7 +601,7 @@ async def _handle_message_async(data, user_id: str, session_id: str = "default")
 
     # Import here to avoid circular dependency
     from claude.api_client import ask_claude
-    from core.orchestrator import discover_repositories
+    from claude.sdk_client import discover_repositories
 
     # Call Claude API asynchronously
     response, background_task_info, usage_info = await ask_claude(
@@ -1129,7 +1135,7 @@ def stop_task(task_id):
 
         async def stop_task_async():
             """Terminate the Claude session for this task"""
-            success = await claude_pool.terminate_session(normalized_task_id)
+            success = await claude_pool.cancel_task(normalized_task_id)
             return success
         
         # Execute in agent pool's event loop

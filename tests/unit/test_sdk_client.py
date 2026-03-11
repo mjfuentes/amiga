@@ -32,6 +32,12 @@ from claude_agent_sdk import (
 from claude.sdk_client import (
     ClaudeSDKPool,
     ClaudeSDKSession,
+    DEBUG_EFFORT,
+    DEBUG_MAX_BUDGET,
+    ORCHESTRATOR_EFFORT,
+    ORCHESTRATOR_MAX_BUDGET,
+    TASK_EFFORT,
+    TASK_MAX_BUDGET,
     _build_orchestrator_prompt,
     _collect_active_tasks,
     _collect_query_result,
@@ -698,3 +704,88 @@ class TestInvokeOrchestratorSdk:
                     )
 
         assert result is None
+
+
+# --- Cost and effort constants ---
+
+
+class TestCostEffortConstants:
+    def test_orchestrator_defaults(self):
+        assert ORCHESTRATOR_EFFORT == "low"
+        assert ORCHESTRATOR_MAX_BUDGET == 0.50
+
+    def test_task_defaults(self):
+        assert TASK_EFFORT == "high"
+        assert TASK_MAX_BUDGET == 5.0
+
+    def test_debug_defaults(self):
+        assert DEBUG_EFFORT == "max"
+        assert DEBUG_MAX_BUDGET == 10.0
+
+    def test_orchestrator_uses_constants(self):
+        """Verify invoke_orchestrator_sdk builds options with constant values."""
+        mock_git_tracker = MagicMock()
+        mock_git_tracker.get_blocking_message.return_value = None
+
+        captured_options = {}
+
+        async def mock_query(**kwargs):
+            captured_options.update(kwargs)
+            yield _make_result(result="test")
+
+        import asyncio
+
+        with patch("claude.sdk_client.get_git_tracker", return_value=mock_git_tracker):
+            with patch("claude.sdk_client.query", side_effect=mock_query):
+                with patch("claude.sdk_client.discover_repositories", return_value=[]):
+                    asyncio.get_event_loop().run_until_complete(
+                        invoke_orchestrator_sdk(
+                            user_query="test",
+                            input_method="text",
+                            conversation_history=[],
+                            current_workspace=None,
+                            bot_repository="/bot",
+                            workspace_path="/workspace",
+                        )
+                    )
+
+        options = captured_options.get("options")
+        assert options is not None
+        assert options.extra_args["effort"] == ORCHESTRATOR_EFFORT
+        assert options.extra_args["max-budget-usd"] == str(ORCHESTRATOR_MAX_BUDGET)
+
+    @pytest.mark.asyncio
+    async def test_pool_passes_effort_and_budget(
+        self, tmp_path: Path,
+    ):
+        """Verify pool forwards effort and budget to session."""
+        workspace = tmp_path
+        (workspace / ".git").mkdir()
+
+        tracker = MagicMock()
+        tracker.record_status_change = MagicMock()
+        tracker.record_workflow_assignment = AsyncMock()
+        tracker.db = MagicMock()
+        tracker.db.update_task = AsyncMock()
+
+        pool = ClaudeSDKPool(usage_tracker=tracker)
+
+        captured_options = {}
+
+        async def mock_query(**kwargs):
+            captured_options.update(kwargs)
+            yield _make_result(result="Done")
+
+        with patch("claude.sdk_client.query", side_effect=mock_query):
+            await pool.execute_task(
+                task_id="budget-test",
+                description="Test budget pass-through",
+                workspace=workspace,
+                effort=TASK_EFFORT,
+                max_budget_usd=TASK_MAX_BUDGET,
+            )
+
+        options = captured_options.get("options")
+        assert options is not None
+        assert options.extra_args["effort"] == "high"
+        assert options.extra_args["max-budget-usd"] == "5.0"

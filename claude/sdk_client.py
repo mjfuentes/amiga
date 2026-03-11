@@ -27,6 +27,7 @@ from claude_agent_sdk import (
 )
 
 from claude.api_client import detect_prompt_injection, sanitize_xml_content
+from claude.sdk_hooks import build_hooks
 from core.exceptions import AMIGAError
 from tasks.tracker import ToolUsageTracker
 from utils.git import get_git_tracker
@@ -118,6 +119,8 @@ class ClaudeSDKSession:
         if use_worktree:
             extra_args["worktree"] = None  # Flag-only, no value
 
+        hooks = build_hooks(self.usage_tracker, task_id)
+
         return ClaudeAgentOptions(
             model=self.model,
             permission_mode="bypassPermissions",
@@ -126,6 +129,7 @@ class ClaudeSDKSession:
             env=env_vars,
             max_turns=200,
             extra_args=extra_args,
+            hooks=hooks,
         )
 
     async def execute_task(
