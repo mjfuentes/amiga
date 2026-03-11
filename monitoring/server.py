@@ -49,6 +49,15 @@ from utils.logging_setup import configure_root_logger  # noqa: E402
 env_path = Path(__file__).parent.parent / ".env"
 load_dotenv(env_path)
 
+# Local mode: skip auth by default for single-user localhost usage.
+# Set AMIGA_AUTH=required in production to enforce login.
+LOCAL_MODE = os.getenv("AMIGA_AUTH", "local") == "local"
+
+# Fixed user ID for auto-login in local mode
+LOCAL_USER_ID = "local-default-user"
+LOCAL_USERNAME = "local"
+LOCAL_EMAIL = "local@localhost"
+
 from core.exceptions import AMIGAError
 
 logger = logging.getLogger(__name__)
@@ -927,6 +936,44 @@ def auth_login():
 
     except Exception as e:
         logger.error(f"Login error: {e}", exc_info=True)
+        return jsonify({"error": "Internal server error"}), 500
+
+
+@app.route("/api/auth/auto-login", methods=["POST"])
+def auth_auto_login():
+    """Auto-login for local single-user mode. No credentials required."""
+    if not LOCAL_MODE:
+        return jsonify({"error": "Auto-login disabled. Use /api/auth/login."}), 403
+
+    try:
+        # Ensure the local default user exists in the database
+        existing_user = user_db.get_user_by_username(LOCAL_USERNAME)
+        if not existing_user:
+            password_hash_value = hash_password("local-no-password")
+            user_db.create_user(
+                user_id=LOCAL_USER_ID,
+                username=LOCAL_USERNAME,
+                email=LOCAL_EMAIL,
+                password_hash=password_hash_value,
+                is_admin=True,
+            )
+            logger.info("Created default local user for auto-login")
+
+        user_id = existing_user["user_id"] if existing_user else LOCAL_USER_ID
+
+        # Generate real JWT tokens (same flow as normal login)
+        access_token, refresh_token, session_id = AuthMiddleware.generate_tokens(user_id)
+        user_info = get_user_info(user_id)
+
+        logger.info(f"Auto-login: user {user_id} authenticated in local mode")
+        return jsonify({
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "user": user_info,
+        })
+
+    except Exception as e:
+        logger.error(f"Auto-login error: {e}", exc_info=True)
         return jsonify({"error": "Internal server error"}), 500
 
 

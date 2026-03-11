@@ -2,9 +2,6 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { User } from '../types';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
-const NO_AUTH_MODE = process.env.REACT_APP_NO_AUTH_MODE !== 'false'; // Enabled by default
-const ADMIN_USER_ID = process.env.REACT_APP_ADMIN_USER_ID || '521930094';
-const ADMIN_EMAIL = 'matiasj.fuentes@gmail.com';
 const ACCESS_TOKEN_KEY = 'chat_access_token';
 const REFRESH_TOKEN_KEY = 'chat_refresh_token';
 const USER_KEY = 'chat_user';
@@ -83,60 +80,84 @@ export const useAuth = () => {
   }, [clearRefreshTimer, refreshAccessToken]);
 
   useEffect(() => {
+    const tryAutoLogin = async (): Promise<boolean> => {
+      try {
+        const response = await fetch(`${API_URL}/auth/auto-login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setToken(data.access_token);
+          setUser(data.user);
+          localStorage.setItem(ACCESS_TOKEN_KEY, data.access_token);
+          localStorage.setItem(REFRESH_TOKEN_KEY, data.refresh_token);
+          localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+          setupTokenRefresh();
+          return true;
+        }
+        // 403 means auto-login disabled (production mode) - fall through
+        return false;
+      } catch {
+        // Server unreachable or error - fall through to manual login
+        return false;
+      }
+    };
+
+    const tryStoredToken = async (): Promise<boolean> => {
+      const storedToken = localStorage.getItem(ACCESS_TOKEN_KEY);
+      if (!storedToken) return false;
+
+      try {
+        const response = await fetch(`${API_URL}/auth/verify`, {
+          headers: { Authorization: `Bearer ${storedToken}` },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setToken(storedToken);
+          setUser(data);
+          localStorage.setItem(USER_KEY, JSON.stringify(data));
+          setupTokenRefresh();
+          return true;
+        }
+
+        // Token invalid, try refresh
+        const refreshed = await refreshAccessToken();
+        if (refreshed) {
+          setupTokenRefresh();
+          return true;
+        }
+      } catch {
+        const refreshed = await refreshAccessToken();
+        if (refreshed) {
+          setupTokenRefresh();
+          return true;
+        }
+      }
+
+      // All attempts failed, clear stored tokens
+      localStorage.removeItem(ACCESS_TOKEN_KEY);
+      localStorage.removeItem(REFRESH_TOKEN_KEY);
+      localStorage.removeItem(USER_KEY);
+      return false;
+    };
+
     const initAuth = async () => {
-      if (NO_AUTH_MODE) {
-        // No-auth mode: auto-login as admin with email
-        const dummyToken = `dummy-token-${ADMIN_USER_ID}`;
-        setToken(dummyToken);
-        setUser({ user_id: ADMIN_USER_ID, username: ADMIN_EMAIL });
-        localStorage.setItem(ACCESS_TOKEN_KEY, dummyToken);
-        localStorage.setItem(USER_KEY, JSON.stringify({ user_id: ADMIN_USER_ID, username: ADMIN_EMAIL }));
+      // 1. Try existing stored token first (avoids unnecessary auto-login calls)
+      if (await tryStoredToken()) {
         setLoading(false);
         return;
       }
 
-      // Check for existing token
-      const storedToken = localStorage.getItem(ACCESS_TOKEN_KEY);
-      if (storedToken) {
-        try {
-          const response = await fetch(`${API_URL}/auth/verify`, {
-            headers: {
-              Authorization: `Bearer ${storedToken}`,
-            },
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            setToken(storedToken);
-            setUser(data);
-            localStorage.setItem(USER_KEY, JSON.stringify(data));
-            setupTokenRefresh(); // Start automatic refresh
-          } else {
-            // Token invalid, try refresh
-            console.log('Stored token invalid, attempting refresh...');
-            const refreshed = await refreshAccessToken();
-            if (refreshed) {
-              setupTokenRefresh();
-            } else {
-              // Refresh failed, clear everything
-              localStorage.removeItem(ACCESS_TOKEN_KEY);
-              localStorage.removeItem(REFRESH_TOKEN_KEY);
-              localStorage.removeItem(USER_KEY);
-            }
-          }
-        } catch (error) {
-          console.error('Token verification failed:', error);
-          // Try refresh before giving up
-          const refreshed = await refreshAccessToken();
-          if (!refreshed) {
-            localStorage.removeItem(ACCESS_TOKEN_KEY);
-            localStorage.removeItem(REFRESH_TOKEN_KEY);
-            localStorage.removeItem(USER_KEY);
-          } else {
-            setupTokenRefresh();
-          }
-        }
+      // 2. Try auto-login (local mode bypass)
+      if (await tryAutoLogin()) {
+        setLoading(false);
+        return;
       }
+
+      // 3. Fall through to AuthModal (loading=false, user=null)
       setLoading(false);
     };
 
