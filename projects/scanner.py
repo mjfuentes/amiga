@@ -3,10 +3,23 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+# Maximum database file size to scan (100 MB)
+_MAX_DB_SIZE_BYTES = 100 * 1024 * 1024
+
+# Row count threshold — above this we report as approximate
+_ROW_COUNT_LIMIT = 1_000_000
+
+# Database file extensions to look for
+_DB_EXTENSIONS = frozenset({".db", ".sqlite", ".sqlite3"})
+
+# Subdirectories to search for databases (in addition to project root)
+_DB_SEARCH_DIRS = ("data", "db", "database")
 
 # Directories to skip during scanning
 SKIP_DIRS = frozenset(
@@ -129,6 +142,7 @@ def scan_project(path: Path) -> dict[str, Any]:
     docs = _detect_docs(path)
     git_info = _detect_git_info(path)
     file_count = _count_files(path)
+    databases = _detect_databases(path)
 
     primary_language = languages[0] if languages else None
 
@@ -146,6 +160,7 @@ def scan_project(path: Path) -> dict[str, Any]:
         "docs": docs,
         "git": git_info,
         "file_count": file_count,
+        "databases": databases,
         "total_lines": None,
     }
 
@@ -595,3 +610,121 @@ def _detect_git_info(path: Path) -> dict[str, Any]:
 def _count_files(path: Path) -> int:
     """Count all non-hidden files, excluding skip directories."""
     return len(_iter_files(path))
+
+
+def _find_database_files(path: Path) -> list[Path]:
+    """Find SQLite database files in the project root and common subdirectories."""
+    db_files: list[Path] = []
+    search_dirs = [path] + [path / d for d in _DB_SEARCH_DIRS]
+
+    for search_dir in search_dirs:
+        if not search_dir.is_dir():
+            continue
+        try:
+            for entry in search_dir.iterdir():
+                if not entry.is_file():
+                    continue
+                if entry.suffix.lower() not in _DB_EXTENSIONS:
+                    continue
+                try:
+                    size = entry.stat().st_size
+                    if size > _MAX_DB_SIZE_BYTES:
+                        continue
+                    db_files.append(entry)
+                except OSError:
+                    continue
+        except PermissionError:
+            continue
+
+    # Deduplicate (root scan might overlap with subdir scan)
+    seen: set[Path] = set()
+    unique: list[Path] = []
+    for db_path in db_files:
+        resolved = db_path.resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            unique.append(db_path)
+    return unique
+
+
+def _read_db_schema(db_path: Path, project_root: Path) -> dict[str, Any] | None:
+    """Read schema information from a SQLite database file.
+
+    Returns a dict with path, size_mb, and tables info, or None on error.
+    """
+    try:
+        size_mb = round(db_path.stat().st_size / (1024 * 1024), 2)
+    except OSError:
+        return None
+
+    try:
+        conn = sqlite3.connect(str(db_path), timeout=5)
+        conn.execute("PRAGMA journal_mode=WAL")
+    except (sqlite3.Error, OSError):
+        return None
+
+    try:
+        # Verify it's a valid SQLite database
+        cursor = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        )
+        table_names = [row[0] for row in cursor.fetchall()]
+
+        tables: list[dict[str, Any]] = []
+        for table_name in table_names:
+            columns_info: list[dict[str, str]] = []
+            try:
+                col_cursor = conn.execute(f"PRAGMA table_info([{table_name}])")
+                for col_row in col_cursor.fetchall():
+                    columns_info.append({
+                        "name": col_row[1],
+                        "type": col_row[2] or "UNKNOWN",
+                    })
+            except sqlite3.Error:
+                continue
+
+            # Row count with safety limit
+            row_count: int | str
+            try:
+                count_cursor = conn.execute(f"SELECT COUNT(*) FROM [{table_name}]")
+                count = count_cursor.fetchone()[0]
+                row_count = f"{_ROW_COUNT_LIMIT}+" if count > _ROW_COUNT_LIMIT else count
+            except sqlite3.Error:
+                row_count = "unknown"
+
+            tables.append({
+                "name": table_name,
+                "columns": columns_info,
+                "row_count": row_count,
+            })
+
+        conn.close()
+
+        # Build relative path from project root
+        try:
+            rel_path = str(db_path.resolve().relative_to(project_root.resolve()))
+        except ValueError:
+            rel_path = str(db_path)
+
+        return {
+            "path": rel_path,
+            "size_mb": size_mb,
+            "tables": tables,
+        }
+    except sqlite3.Error:
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass
+        return None
+
+
+def _detect_databases(path: Path) -> list[dict[str, Any]]:
+    """Detect SQLite databases and read their schemas."""
+    db_files = _find_database_files(path)
+    databases: list[dict[str, Any]] = []
+    for db_path in db_files:
+        schema = _read_db_schema(db_path, path)
+        if schema is not None:
+            databases.append(schema)
+    return databases

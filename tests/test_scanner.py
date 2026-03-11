@@ -1,6 +1,7 @@
 """Tests for projects/scanner.py and projects/registry.py."""
 
 import json
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -11,12 +12,15 @@ import pytest
 from projects.scanner import (
     _count_files,
     _detect_build_tools,
+    _detect_databases,
     _detect_docs,
     _detect_frameworks,
     _detect_languages,
     _detect_package_manager,
     _detect_structure,
     _detect_test_framework,
+    _find_database_files,
+    _read_db_schema,
     scan_project,
 )
 
@@ -365,6 +369,210 @@ class TestCountFiles:
         _write(tmp_path / ".hidden" / "secret.txt")
         _write(tmp_path / "visible.txt")
         assert _count_files(tmp_path) == 1
+
+
+# ---------------------------------------------------------------------------
+# Database detection tests
+# ---------------------------------------------------------------------------
+
+
+def _create_test_db(db_path: Path, tables: dict[str, list[tuple[str, str]]] | None = None) -> None:
+    """Create a test SQLite database with optional table definitions.
+
+    Args:
+        db_path: Path to create the database file.
+        tables: Dict mapping table name to list of (column_name, column_type) tuples.
+    """
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
+    if tables:
+        for table_name, columns in tables.items():
+            cols = ", ".join(f"{name} {typ}" for name, typ in columns)
+            conn.execute(f"CREATE TABLE {table_name} ({cols})")
+    conn.commit()
+    conn.close()
+
+
+class TestFindDatabaseFiles:
+    def test_finds_db_in_root(self, tmp_path: Path) -> None:
+        _create_test_db(tmp_path / "app.db")
+        found = _find_database_files(tmp_path)
+        assert len(found) == 1
+        assert found[0].name == "app.db"
+
+    def test_finds_db_in_data_subdir(self, tmp_path: Path) -> None:
+        _create_test_db(tmp_path / "data" / "store.sqlite")
+        found = _find_database_files(tmp_path)
+        assert len(found) == 1
+        assert found[0].name == "store.sqlite"
+
+    def test_finds_sqlite3_extension(self, tmp_path: Path) -> None:
+        _create_test_db(tmp_path / "db" / "main.sqlite3")
+        found = _find_database_files(tmp_path)
+        assert len(found) == 1
+        assert found[0].name == "main.sqlite3"
+
+    def test_skips_non_db_extensions(self, tmp_path: Path) -> None:
+        _write(tmp_path / "data.json", "{}")
+        _write(tmp_path / "app.txt", "hello")
+        found = _find_database_files(tmp_path)
+        assert len(found) == 0
+
+    def test_deduplicates_root_and_subdir(self, tmp_path: Path) -> None:
+        """If data/ is both in root scan and _DB_SEARCH_DIRS, no duplicates."""
+        _create_test_db(tmp_path / "data" / "app.db")
+        found = _find_database_files(tmp_path)
+        assert len(found) == 1
+
+    def test_finds_multiple_databases(self, tmp_path: Path) -> None:
+        _create_test_db(tmp_path / "app.db")
+        _create_test_db(tmp_path / "data" / "store.sqlite")
+        _create_test_db(tmp_path / "database" / "archive.sqlite3")
+        found = _find_database_files(tmp_path)
+        assert len(found) == 3
+
+    def test_empty_directory(self, tmp_path: Path) -> None:
+        found = _find_database_files(tmp_path)
+        assert found == []
+
+
+class TestReadDbSchema:
+    def test_reads_table_and_columns(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        _create_test_db(db_path, {
+            "users": [("id", "INTEGER"), ("name", "TEXT"), ("email", "TEXT")],
+        })
+        result = _read_db_schema(db_path, tmp_path)
+        assert result is not None
+        assert result["path"] == "test.db"
+        assert result["size_mb"] >= 0
+        assert len(result["tables"]) == 1
+
+        table = result["tables"][0]
+        assert table["name"] == "users"
+        assert len(table["columns"]) == 3
+        col_names = [c["name"] for c in table["columns"]]
+        assert "id" in col_names
+        assert "name" in col_names
+        assert "email" in col_names
+        col_types = {c["name"]: c["type"] for c in table["columns"]}
+        assert col_types["id"] == "INTEGER"
+        assert col_types["name"] == "TEXT"
+
+    def test_reads_row_count(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        _create_test_db(db_path, {
+            "items": [("id", "INTEGER"), ("value", "TEXT")],
+        })
+        conn = sqlite3.connect(str(db_path))
+        for i in range(50):
+            conn.execute("INSERT INTO items (id, value) VALUES (?, ?)", (i, f"val_{i}"))
+        conn.commit()
+        conn.close()
+
+        result = _read_db_schema(db_path, tmp_path)
+        assert result is not None
+        assert result["tables"][0]["row_count"] == 50
+
+    def test_multiple_tables(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "multi.db"
+        _create_test_db(db_path, {
+            "users": [("id", "INTEGER"), ("name", "TEXT")],
+            "orders": [("id", "INTEGER"), ("user_id", "INTEGER"), ("total", "REAL")],
+        })
+        result = _read_db_schema(db_path, tmp_path)
+        assert result is not None
+        assert len(result["tables"]) == 2
+        table_names = {t["name"] for t in result["tables"]}
+        assert table_names == {"users", "orders"}
+
+    def test_relative_path_in_subdir(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "data" / "nested" / "app.db"
+        _create_test_db(db_path, {"t": [("id", "INTEGER")]})
+        result = _read_db_schema(db_path, tmp_path)
+        assert result is not None
+        assert result["path"] == "data/nested/app.db"
+
+    def test_skips_corrupted_file(self, tmp_path: Path) -> None:
+        bad_path = tmp_path / "bad.db"
+        bad_path.write_bytes(b"this is not a sqlite database at all")
+        result = _read_db_schema(bad_path, tmp_path)
+        assert result is None
+
+    def test_skips_nonexistent_file(self, tmp_path: Path) -> None:
+        result = _read_db_schema(tmp_path / "nope.db", tmp_path)
+        assert result is None
+
+    def test_empty_database(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "empty.db"
+        _create_test_db(db_path)
+        result = _read_db_schema(db_path, tmp_path)
+        assert result is not None
+        assert result["tables"] == []
+
+
+class TestDetectDatabases:
+    def test_full_detection(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "data" / "app.db"
+        _create_test_db(db_path, {
+            "emails": [
+                ("id", "INTEGER"),
+                ("sender", "TEXT"),
+                ("subject", "TEXT"),
+                ("body", "TEXT"),
+                ("received_at", "TEXT"),
+            ],
+        })
+        conn = sqlite3.connect(str(db_path))
+        for i in range(10):
+            conn.execute(
+                "INSERT INTO emails (id, sender, subject, body, received_at) VALUES (?, ?, ?, ?, ?)",
+                (i, f"user{i}@test.com", f"Subject {i}", f"Body {i}", "2026-01-01"),
+            )
+        conn.commit()
+        conn.close()
+
+        databases = _detect_databases(tmp_path)
+        assert len(databases) == 1
+
+        db = databases[0]
+        assert db["path"] == "data/app.db"
+        assert db["size_mb"] >= 0
+        assert len(db["tables"]) == 1
+
+        table = db["tables"][0]
+        assert table["name"] == "emails"
+        assert table["row_count"] == 10
+        assert len(table["columns"]) == 5
+        col_names = [c["name"] for c in table["columns"]]
+        assert col_names == ["id", "sender", "subject", "body", "received_at"]
+
+    def test_no_databases(self, tmp_path: Path) -> None:
+        _write(tmp_path / "app.py", "print('hello')")
+        databases = _detect_databases(tmp_path)
+        assert databases == []
+
+    def test_skips_corrupted_gracefully(self, tmp_path: Path) -> None:
+        (tmp_path / "bad.db").write_bytes(b"not sqlite")
+        _create_test_db(tmp_path / "good.db", {"t": [("id", "INTEGER")]})
+        databases = _detect_databases(tmp_path)
+        assert len(databases) == 1
+        assert databases[0]["tables"][0]["name"] == "t"
+
+
+class TestScanProjectDatabases:
+    def test_databases_in_scan_result(self, tmp_path: Path) -> None:
+        _create_test_db(tmp_path / "data" / "store.db", {
+            "products": [("id", "INTEGER"), ("name", "TEXT"), ("price", "REAL")],
+        })
+        result = scan_project(tmp_path)
+        assert "databases" in result
+        assert len(result["databases"]) == 1
+        assert result["databases"][0]["tables"][0]["name"] == "products"
+
+    def test_empty_project_has_empty_databases(self, tmp_path: Path) -> None:
+        result = scan_project(tmp_path)
+        assert result["databases"] == []
 
 
 # ---------------------------------------------------------------------------
