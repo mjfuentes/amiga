@@ -138,6 +138,7 @@ class TestSubagentStopHook:
                 "agent_type": "code_agent",
                 "agent_id": "agent-001",
                 "last_assistant_message": "Done implementing feature.",
+                "agent_transcript_path": "/tmp/agent_transcript",
             },
         )
 
@@ -319,6 +320,95 @@ class TestNotificationHook:
         callback = create_notification_hook(None, TASK_ID)
         result = await callback(None, None, hook_context)
         assert result == {}
+
+
+    @pytest.mark.asyncio
+    async def test_omits_transcript_path_when_absent(self, mock_tracker, hook_context):
+        callback = create_subagent_stop_hook(mock_tracker, TASK_ID)
+        hook_input = {
+            "agent_type": "code_agent",
+            "agent_id": "agent-005",
+            "last_assistant_message": "Done.",
+        }
+
+        await callback(hook_input, None, hook_context)
+
+        call_args = mock_tracker.record_tool_complete.call_args
+        assert "agent_transcript_path" not in call_args[1]["parameters"]
+
+
+class TestPreToolHookAgentFields:
+    @pytest.mark.asyncio
+    async def test_passes_agent_fields_to_tracker(self, mock_tracker, hook_context):
+        callback = create_pre_tool_hook(mock_tracker, TASK_ID)
+        hook_input = {
+            "tool_name": "Read",
+            "tool_input": {"file_path": "/tmp/test.py"},
+            "agent_id": "agent-010",
+            "agent_type": "code_agent",
+        }
+
+        result = await callback(hook_input, "tu-100", hook_context)
+
+        assert result == {}
+        call_args = mock_tracker.record_tool_start.call_args
+        params = call_args[0][2]
+        assert params["agent_id"] == "agent-010"
+        assert params["agent_type"] == "code_agent"
+        assert params["tool_use_id"] == "tu-100"
+
+    @pytest.mark.asyncio
+    async def test_omits_none_agent_fields(self, mock_tracker, hook_context):
+        callback = create_pre_tool_hook(mock_tracker, TASK_ID)
+        hook_input = {
+            "tool_name": "Read",
+            "tool_input": {"file_path": "/tmp/test.py"},
+        }
+
+        await callback(hook_input, None, hook_context)
+
+        call_args = mock_tracker.record_tool_start.call_args
+        params = call_args[0][2]
+        assert "agent_id" not in params
+        assert "agent_type" not in params
+        assert "tool_use_id" not in params
+
+
+class TestPostToolHookAgentFields:
+    @pytest.mark.asyncio
+    async def test_passes_agent_fields_to_tracker(self, mock_tracker, hook_context):
+        callback = create_post_tool_hook(mock_tracker, TASK_ID)
+        hook_input = {
+            "tool_name": "Write",
+            "tool_input": {"file_path": "/tmp/out.py"},
+            "agent_id": "agent-020",
+            "agent_type": "frontend_agent",
+        }
+
+        result = await callback(hook_input, "tu-200", hook_context)
+
+        assert result == {}
+        call_args = mock_tracker.record_tool_complete.call_args
+        params = call_args[1]["parameters"]
+        assert params["agent_id"] == "agent-020"
+        assert params["agent_type"] == "frontend_agent"
+        assert params["tool_use_id"] == "tu-200"
+
+    @pytest.mark.asyncio
+    async def test_omits_none_agent_fields(self, mock_tracker, hook_context):
+        callback = create_post_tool_hook(mock_tracker, TASK_ID)
+        hook_input = {
+            "tool_name": "Write",
+            "tool_input": {"file_path": "/tmp/out.py"},
+        }
+
+        await callback(hook_input, None, hook_context)
+
+        call_args = mock_tracker.record_tool_complete.call_args
+        params = call_args[1]["parameters"]
+        assert "agent_id" not in params
+        assert "agent_type" not in params
+        assert "tool_use_id" not in params
 
 
 class TestBuildHooks:

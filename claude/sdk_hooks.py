@@ -107,13 +107,24 @@ def create_pre_tool_hook(
         try:
             tool_name = _safe_get(hook_input, "tool_name", "unknown")
             tool_input = _safe_get(hook_input, "tool_input", {})
+            agent_id = _safe_get(hook_input, "agent_id")
+            agent_type = _safe_get(hook_input, "agent_type")
 
-            logger.debug(f"Task {task_id}: PreToolUse tool={tool_name}")
+            logger.debug(
+                f"Task {task_id}: PreToolUse tool={tool_name} "
+                f"tool_use_id={tool_use_id} agent_id={agent_id} agent_type={agent_type}"
+            )
 
             # Record tool start in tracker (never let this crash the hook)
             if tracker:
                 try:
                     params = dict(tool_input) if tool_input else {}
+                    if agent_id:
+                        params["agent_id"] = agent_id
+                    if agent_type:
+                        params["agent_type"] = agent_type
+                    if tool_use_id:
+                        params["tool_use_id"] = tool_use_id
                     tracker.record_tool_start(task_id, tool_name, params)
                 except Exception as tracker_err:
                     logger.warning(
@@ -155,12 +166,23 @@ def create_post_tool_hook(
         try:
             tool_name = _safe_get(hook_input, "tool_name", "unknown")
             tool_input = _safe_get(hook_input, "tool_input", {})
+            agent_id = _safe_get(hook_input, "agent_id")
+            agent_type = _safe_get(hook_input, "agent_type")
 
-            logger.debug(f"Task {task_id}: PostToolUse tool={tool_name}")
+            logger.debug(
+                f"Task {task_id}: PostToolUse tool={tool_name} "
+                f"tool_use_id={tool_use_id} agent_id={agent_id} agent_type={agent_type}"
+            )
 
             if tracker:
                 try:
                     params = dict(tool_input) if tool_input else {}
+                    if agent_id:
+                        params["agent_id"] = agent_id
+                    if agent_type:
+                        params["agent_type"] = agent_type
+                    if tool_use_id:
+                        params["tool_use_id"] = tool_use_id
                     tracker.record_tool_complete(
                         task_id=task_id,
                         tool_name=tool_name,
@@ -279,25 +301,32 @@ def create_subagent_stop_hook(
         try:
             agent_type = _safe_get(hook_input, "agent_type", "unknown")
             agent_id = _safe_get(hook_input, "agent_id", "unknown")
+            agent_transcript_path = _safe_get(hook_input, "agent_transcript_path")
             last_assistant_message = _safe_get(hook_input, "last_assistant_message", "")
             error = _safe_get(hook_input, "error", "")
             success = not bool(error)
 
-            logger.info(f"Task {task_id}: SubagentStop type={agent_type} id={agent_id}")
+            logger.info(
+                f"Task {task_id}: SubagentStop type={agent_type} id={agent_id} "
+                f"transcript={agent_transcript_path}"
+            )
 
             if tracker:
                 try:
+                    stop_params: dict[str, Any] = {
+                        "agent_type": agent_type,
+                        "agent_id": agent_id,
+                        "last_assistant_message": str(last_assistant_message)[:500],
+                    }
+                    if agent_transcript_path:
+                        stop_params["agent_transcript_path"] = str(agent_transcript_path)
                     tracker.record_tool_complete(
                         task_id=task_id,
                         tool_name=f"SubagentStop:{agent_type}",
                         duration_ms=0.0,
                         success=success,
                         error=error if error else None,
-                        parameters={
-                            "agent_type": agent_type,
-                            "agent_id": agent_id,
-                            "last_assistant_message": str(last_assistant_message)[:500],
-                        },
+                        parameters=stop_params,
                     )
                 except Exception as tracker_err:
                     logger.warning(

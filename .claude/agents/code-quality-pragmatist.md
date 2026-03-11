@@ -4,7 +4,7 @@ description: Use this agent when you need to review recently written code for co
 tools: Read, Grep, Glob, Bash
 color: orange
 model: sonnet
-memory: project
+memory: user
 permissionMode: plan
 ---
 

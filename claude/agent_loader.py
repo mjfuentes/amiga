@@ -28,7 +28,7 @@ _MODEL_ALIASES: tuple[tuple[str, Literal["sonnet", "opus", "haiku", "inherit"]],
 
 _VALID_MEMORY_VALUES: frozenset[str] = frozenset({"user", "project", "local"})
 _VALID_ISOLATION_VALUES: frozenset[str] = frozenset({"worktree"})
-_VALID_PERMISSION_MODE_VALUES: frozenset[str] = frozenset({"plan", "acceptEdits", "bypassPermissions"})
+_VALID_PERMISSION_MODE_VALUES: frozenset[str] = frozenset({"default", "plan", "acceptEdits", "dontAsk", "bypassPermissions"})
 _VALID_EFFORT_LEVEL_VALUES: frozenset[str] = frozenset({"low", "medium", "high", "max"})
 
 

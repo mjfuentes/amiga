@@ -298,16 +298,16 @@ agentlab/
 ├── .claude/             # Claude Code configuration
 │   ├── agents/          # Agent definitions
 │   │   ├── orchestrator.md            # Task coordinator
-│   │   ├── code_agent.md              # Backend implementation (Sonnet 4.5)
-│   │   ├── frontend_agent.md          # UI/UX development (Sonnet 4.5)
-│   │   ├── research_agent.md          # Analysis & proposals (Opus 4.5)
+│   │   ├── code_agent.md              # Backend implementation (Sonnet 4.6)
+│   │   ├── frontend_agent.md          # UI/UX development (Sonnet 4.6)
+│   │   ├── research_agent.md          # Analysis & proposals (Opus 4.6)
 │   │   ├── Jenny.md                   # Spec verification
 │   │   ├── claude-md-compliance-checker.md  # Project compliance
 │   │   ├── code-quality-pragmatist.md       # Complexity detection
 │   │   ├── karen.md                   # Reality checks
 │   │   ├── task-completion-validator.md     # Functional validation
 │   │   ├── ui-comprehensive-tester.md       # UI testing
-│   │   └── ultrathink-debugger.md           # Deep debugging (Opus 4.5)
+│   │   └── ultrathink-debugger.md           # Deep debugging (Opus 4.6)
 │   ├── hooks/           # Shell hook scripts (superseded by Python SDK callbacks in claude/sdk_hooks.py)
 │   └── settings.local.json  # Permissions, output style
 ├── data/                # Runtime state (sessions, tasks, costs)
@@ -321,9 +321,9 @@ agentlab/
 
 #### Core Agents
 - **orchestrator**: Coordinates tasks, delegates to specialized agents
-- **code_agent**: Backend implementation (Python, Sonnet 4.5)
-- **frontend_agent**: UI/UX development (HTML/CSS/JS, Sonnet 4.5) with Playwright MCP for browser testing
-- **research_agent**: Analysis, proposals, web research (Opus 4.5)
+- **code_agent**: Backend implementation (Python, Sonnet 4.6)
+- **frontend_agent**: UI/UX development (HTML/CSS/JS, Sonnet 4.6) with Playwright MCP for browser testing
+- **research_agent**: Analysis, proposals, web research (Opus 4.6)
 
 #### Quality Assurance Agents
 - **Jenny**: Verifies implementation matches specifications
@@ -333,7 +333,7 @@ agentlab/
 - **task-completion-validator**: Validates tasks actually work
 - **ui-comprehensive-tester**: Comprehensive UI testing with Playwright MCP
 - **debug-agent**: General debugging with Sonnet
-- **ultrathink-debugger**: Deep debugging (Opus 4.5 - expensive, use sparingly)
+- **ultrathink-debugger**: Deep debugging (Opus 4.6 - expensive, use sparingly)
 
 #### Planning & Git Agents
 - **task-decomposer**: Breaks large tasks into subtasks with effort estimates
@@ -834,8 +834,8 @@ validate_file_path(path, base_path)  # Prevent directory traversal
 
 **Model selection**:
 - Haiku 4.5 for Q&A (10x cheaper)
-- Sonnet 4.5 for coding (more capable)
-- Opus 4.5 for research_agent and ultrathink-debugger (most capable, most expensive)
+- Sonnet 4.6 for coding (more capable)
+- Opus 4.6 for research_agent and ultrathink-debugger (most capable, most expensive)
 
 **Cost-aware agent usage**:
 - research_agent (Opus): Use for complex analysis only
@@ -844,9 +844,9 @@ validate_file_path(path, base_path)  # Prevent directory traversal
 
 **Model specification rationale**:
 - Explicit model specifications added to agents for cost predictability
-- code_agent, frontend_agent: Sonnet 4.5 for balance of capability/cost
-- research_agent: Opus 4.5 for comprehensive research and analysis
-- ultrathink-debugger: Opus 4.5 for deep reasoning in complex debugging
+- code_agent, frontend_agent: Sonnet 4.6 for balance of capability/cost
+- research_agent: Opus 4.6 for comprehensive research and analysis
+- ultrathink-debugger: Opus 4.6 for deep reasoning in complex debugging
 
 ### Background Task Format
 
@@ -1148,7 +1148,7 @@ cat data/cost_tracking.json | jq
 ### Response Speed
 
 **Haiku 4.5**: 1-2s for Q&A
-**Sonnet 4.5**: 5-60s for coding tasks
+**Sonnet 4.6**: 5-60s for coding tasks
 
 **Optimization**: Route correctly. Don't use Sonnet for simple questions.
 
@@ -1185,4 +1185,4 @@ cat data/cost_tracking.json | jq
 
 **Last Updated**: 2025-10-23
 **Maintained By**: Matias Fuentes
-**Claude Code Version**: Latest (Sonnet 4.5)
+**Claude Code Version**: Latest (Sonnet 4.6)

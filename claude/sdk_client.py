@@ -22,6 +22,10 @@ from claude_agent_sdk import (
     ResultMessage,
     SystemMessage,
     TextBlock,
+    ThinkingConfig,
+    ThinkingConfigAdaptive,
+    ThinkingConfigDisabled,
+    ThinkingConfigEnabled,
     ToolUseBlock,
     query,
 )
@@ -76,6 +80,30 @@ TASK_EFFORT: EffortLevel = "high"  # Implementation tasks need full reasoning
 TASK_MAX_BUDGET = 5.0  # Cap per individual task
 DEBUG_EFFORT: EffortLevel = "max"  # Deep debugging gets maximum reasoning
 DEBUG_MAX_BUDGET = 10.0  # Debugging can be expensive
+
+# Thinking budget limits per effort level (tokens)
+_THINKING_BUDGET_MAX = 32_000
+_THINKING_BUDGET_HIGH = 16_000
+
+
+def _build_thinking_config(effort: EffortLevel) -> ThinkingConfig | None:
+    """Map effort level to a ThinkingConfig for the SDK.
+
+    Returns an immutable thinking configuration dict matching the effort:
+      - "low"    -> disabled (no thinking overhead)
+      - "medium" -> adaptive (SDK decides when to think)
+      - "high"   -> adaptive (SDK decides, good balance)
+      - "max"    -> enabled with maximum budget (deep reasoning)
+
+    Returns None if effort is unrecognized, letting the SDK use its default.
+    """
+    configs: dict[EffortLevel, ThinkingConfig] = {
+        "low": ThinkingConfigDisabled(type="disabled"),
+        "medium": ThinkingConfigAdaptive(type="adaptive"),
+        "high": ThinkingConfigAdaptive(type="adaptive"),
+        "max": ThinkingConfigEnabled(type="enabled", budget_tokens=_THINKING_BUDGET_MAX),
+    }
+    return configs.get(effort)
 
 
 def discover_repositories(base_path: str) -> list[str]:
@@ -153,6 +181,9 @@ class ClaudeSDKSession:
 
         hooks = build_hooks(self.usage_tracker, task_id)
 
+        # ThinkingConfig takes precedence over deprecated max_thinking_tokens
+        thinking_config = _build_thinking_config(effort) if effort else None
+
         return ClaudeAgentOptions(
             model=self.model,
             permission_mode="bypassPermissions",
@@ -164,6 +195,7 @@ class ClaudeSDKSession:
             max_budget_usd=max_budget_usd,
             extra_args=extra_args,
             hooks=hooks,
+            thinking=thinking_config,
             setting_sources=["project"],
         )
 
@@ -606,6 +638,7 @@ async def invoke_orchestrator_sdk(
         max_turns=5,
         effort=ORCHESTRATOR_EFFORT,
         max_budget_usd=ORCHESTRATOR_MAX_BUDGET,
+        thinking=_build_thinking_config(ORCHESTRATOR_EFFORT),
         setting_sources=["project"],
     )
 
