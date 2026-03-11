@@ -102,6 +102,22 @@ cmd_setup() {
     fi
     info "Python $PY_VERSION"
 
+    # --- Node.js version ---
+    step "Checking Node.js"
+    if command -v node >/dev/null 2>&1; then
+        NODE_VERSION=$(node --version | sed 's/^v//')
+        NODE_MAJOR=$(echo "$NODE_VERSION" | cut -d. -f1)
+        if [ "$NODE_MAJOR" -lt 18 ]; then
+            warn "Node 18+ required for frontend build (found $NODE_VERSION)."
+            dim "Install from https://nodejs.org/"
+        else
+            info "Node $NODE_VERSION"
+        fi
+    else
+        warn "Node 18+ required for frontend build. Install from https://nodejs.org/"
+        dim "Setup will continue, but frontend build may fail."
+    fi
+
     # --- jq ---
     if ! command -v jq >/dev/null 2>&1; then
         warn "jq not found. Some features (hooks, CLI operations) need it."
@@ -238,6 +254,9 @@ configure_env_interactive() {
 
         info "Limits set: \$$daily/day, \$$monthly/month"
     fi
+
+    # Secure .env (readable only by owner)
+    chmod 600 "$ENV_FILE"
 }
 
 cmd_start() {
@@ -494,6 +513,75 @@ cmd_uninstall_daemon() {
     info "Daemon uninstalled"
 }
 
+cmd_uninstall() {
+    echo ""
+    warn "This will remove AMIGA from your system."
+    echo ""
+    echo -n "Type 'yes' to confirm: "
+    read -r confirm
+    if [ "$confirm" != "yes" ]; then
+        info "Aborted"
+        exit 0
+    fi
+
+    echo ""
+
+    # Stop server if running
+    if is_running; then
+        info "Stopping server..."
+        local pids
+        pids=$(server_pid)
+        if [ -n "$pids" ]; then
+            echo "$pids" | xargs kill -TERM 2>/dev/null || true
+            sleep 2
+            pids=$(server_pid)
+            if [ -n "$pids" ]; then
+                echo "$pids" | xargs kill -9 2>/dev/null || true
+            fi
+        fi
+        info "Server stopped"
+    fi
+
+    # Unload daemon if installed (macOS)
+    if [ "$(uname)" = "Darwin" ] && daemon_installed; then
+        info "Unloading daemon..."
+        launchctl unload "$PLIST_PATH" 2>/dev/null || true
+        rm -f "$PLIST_PATH"
+        info "Daemon removed"
+    fi
+
+    # Remove symlink at /usr/local/bin/amiga if it points to this install
+    local symlink="/usr/local/bin/amiga"
+    if [ -L "$symlink" ]; then
+        local target
+        target=$(readlink "$symlink" 2>/dev/null || true)
+        if [ "$target" = "$SCRIPT_DIR/amiga" ]; then
+            info "Removing symlink $symlink..."
+            rm -f "$symlink" 2>/dev/null || sudo rm -f "$symlink"
+            info "Symlink removed"
+        fi
+    fi
+
+    # Remove PATH entries from shell profiles
+    local profiles=("$HOME/.zshrc" "$HOME/.bashrc")
+    for profile in "${profiles[@]}"; do
+        if [ -f "$profile" ]; then
+            # Remove lines containing /.amiga or # AMIGA
+            if grep -q -E '/\.amiga|# AMIGA' "$profile" 2>/dev/null; then
+                info "Cleaning PATH entries from $(basename "$profile")..."
+                sed -i.bak -E '/\/\.amiga|# AMIGA/d' "$profile"
+                rm -f "$profile.bak"
+            fi
+        fi
+    done
+
+    echo ""
+    info "AMIGA services stopped and system entries removed."
+    echo ""
+    dim "To remove all files: rm -rf $SCRIPT_DIR"
+    echo ""
+}
+
 cmd_update() {
     step "Pulling latest changes"
     local before_hash
@@ -532,6 +620,220 @@ cmd_update() {
     info "Update complete"
 }
 
+cmd_doctor() {
+    echo ""
+    echo "${BOLD}AMIGA Doctor${RESET}"
+    echo "============"
+    echo ""
+
+    local passed=0
+    local warnings=0
+    local failures=0
+
+    # Column width for aligned output
+    local col=28
+
+    doctor_ok() {
+        printf "  %-${col}s ${GREEN}%-10s ok${RESET}\n" "$1" "$2"
+        passed=$((passed + 1))
+    }
+
+    doctor_warn() {
+        printf "  %-${col}s ${YELLOW}%-10s warning${RESET}\n" "$1" "$2"
+        warnings=$((warnings + 1))
+    }
+
+    doctor_fail() {
+        printf "  %-${col}s ${RED}%-10s FAIL${RESET}\n" "$1" "$2"
+        failures=$((failures + 1))
+    }
+
+    # 1. Python version (>= 3.12)
+    if command -v python3 >/dev/null 2>&1; then
+        local py_ver
+        py_ver=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")')
+        local py_major py_minor
+        py_major=$(echo "$py_ver" | cut -d. -f1)
+        py_minor=$(echo "$py_ver" | cut -d. -f2)
+        if [ "$py_major" -ge 3 ] && [ "$py_minor" -ge 12 ]; then
+            doctor_ok "Checking Python..." "$py_ver"
+        else
+            doctor_fail "Checking Python..." "$py_ver (<3.12)"
+        fi
+    else
+        doctor_fail "Checking Python..." "not found"
+    fi
+
+    # 2. Node version (>= 18)
+    if command -v node >/dev/null 2>&1; then
+        local node_ver
+        node_ver=$(node --version | sed 's/^v//')
+        local node_major
+        node_major=$(echo "$node_ver" | cut -d. -f1)
+        if [ "$node_major" -ge 18 ]; then
+            doctor_ok "Checking Node..." "$node_ver"
+        else
+            doctor_fail "Checking Node..." "$node_ver (<18)"
+        fi
+    else
+        doctor_fail "Checking Node..." "not found"
+    fi
+
+    # 3. jq
+    if command -v jq >/dev/null 2>&1; then
+        doctor_ok "Checking jq..." "installed"
+    else
+        doctor_warn "Checking jq..." "not found"
+    fi
+
+    # 4. Venv
+    if [ -d "$VENV_DIR" ]; then
+        if [ -x "$VENV_DIR/bin/python" ]; then
+            local venv_py
+            venv_py=$("$VENV_DIR/bin/python" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "?")
+            doctor_ok "Checking venv..." "py$venv_py"
+        else
+            doctor_fail "Checking venv..." "broken"
+        fi
+    else
+        doctor_fail "Checking venv..." "not found"
+    fi
+
+    # 5. Dependencies (pip check)
+    if [ -x "$VENV_DIR/bin/pip" ]; then
+        local pip_out
+        pip_out=$("$VENV_DIR/bin/pip" check 2>&1) || true
+        if echo "$pip_out" | grep -q "No broken requirements found"; then
+            doctor_ok "Checking dependencies..." "clean"
+        else
+            local broken_count
+            broken_count=$(echo "$pip_out" | grep -c "has requirement" || echo "0")
+            doctor_warn "Checking dependencies..." "$broken_count broken"
+        fi
+    else
+        doctor_warn "Checking dependencies..." "no pip"
+    fi
+
+    # 6. Environment (.env exists, keys set)
+    if [ -f "$ENV_FILE" ]; then
+        local env_ok=true
+        local api_key_val
+        api_key_val=$(grep "^ANTHROPIC_API_KEY=" "$ENV_FILE" 2>/dev/null | cut -d= -f2-)
+        if [ -z "$api_key_val" ] || [ "$api_key_val" = "your_anthropic_api_key_here" ]; then
+            env_ok=false
+        fi
+        local ws_val
+        ws_val=$(grep "^WORKSPACE_PATH=" "$ENV_FILE" 2>/dev/null | cut -d= -f2-)
+        if [ -z "$ws_val" ]; then
+            env_ok=false
+        fi
+        if $env_ok; then
+            doctor_ok "Checking .env..." "configured"
+        else
+            doctor_fail "Checking .env..." "incomplete"
+        fi
+    else
+        doctor_fail "Checking .env..." "missing"
+    fi
+
+    # 7. .env permissions
+    if [ -f "$ENV_FILE" ]; then
+        local env_perms
+        env_perms=$(stat -f "%Lp" "$ENV_FILE" 2>/dev/null || stat -c "%a" "$ENV_FILE" 2>/dev/null || echo "?")
+        if [ "$env_perms" = "600" ]; then
+            doctor_ok "Checking .env permissions..." "0600"
+        else
+            doctor_warn "Checking .env permissions..." "0$env_perms"
+        fi
+    else
+        # Already reported missing above, skip
+        passed=$((passed + 1))  # neutral — no file to check
+        printf "  %-${col}s ${DIM}%-10s skipped${RESET}\n" "Checking .env permissions..." "no file"
+    fi
+
+    # 8. Frontend build
+    if [ -d "$SCRIPT_DIR/static/chat" ] && [ "$(ls -A "$SCRIPT_DIR/static/chat/" 2>/dev/null)" ]; then
+        doctor_ok "Checking frontend build..." "found"
+    else
+        doctor_fail "Checking frontend build..." "empty"
+    fi
+
+    # 9. Database
+    if [ -f "$DB_PATH" ]; then
+        if sqlite3 "$DB_PATH" "SELECT 1;" >/dev/null 2>&1; then
+            doctor_ok "Checking database..." "accessible"
+        else
+            doctor_fail "Checking database..." "unreadable"
+        fi
+    else
+        doctor_warn "Checking database..." "not found"
+    fi
+
+    # 10. Server health
+    if is_running; then
+        local health_resp
+        health_resp=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PORT/health" 2>/dev/null || echo "000")
+        if [ "$health_resp" = "200" ]; then
+            doctor_ok "Checking server..." "running"
+        else
+            doctor_warn "Checking server..." "unhealthy"
+        fi
+    else
+        printf "  %-${col}s ${DIM}%-10s not running${RESET}\n" "Checking server..." ""
+        passed=$((passed + 1))  # neutral — not a failure if server is off
+    fi
+
+    # 11. Daemon (macOS only)
+    if [ "$(uname)" = "Darwin" ]; then
+        if daemon_installed; then
+            if daemon_loaded; then
+                doctor_ok "Checking daemon..." "loaded"
+            else
+                doctor_warn "Checking daemon..." "not loaded"
+            fi
+        else
+            printf "  %-${col}s ${DIM}%-10s not installed${RESET}\n" "Checking daemon..." ""
+            passed=$((passed + 1))  # neutral
+        fi
+    else
+        printf "  %-${col}s ${DIM}%-10s n/a${RESET}\n" "Checking daemon..." ""
+        passed=$((passed + 1))  # neutral
+    fi
+
+    # 12. Disk space (> 1GB free)
+    local free_bytes free_gb
+    if [ "$(uname)" = "Darwin" ]; then
+        free_bytes=$(df -k "$SCRIPT_DIR" | tail -1 | awk '{print $4}')
+        free_gb=$(( free_bytes / 1024 / 1024 ))
+    else
+        free_bytes=$(df -k "$SCRIPT_DIR" | tail -1 | awk '{print $4}')
+        free_gb=$(( free_bytes / 1024 / 1024 ))
+    fi
+    if [ "$free_gb" -gt 1 ]; then
+        doctor_ok "Checking disk space..." "${free_gb}GB free"
+    else
+        doctor_fail "Checking disk space..." "${free_gb}GB free"
+    fi
+
+    # Summary
+    echo ""
+    local total=$((passed + warnings + failures))
+    local summary="${passed} checks passed"
+    if [ "$warnings" -gt 0 ]; then
+        summary="${summary}, ${YELLOW}${warnings} warning(s)${RESET}"
+    fi
+    if [ "$failures" -gt 0 ]; then
+        summary="${summary}, ${RED}${failures} failure(s)${RESET}"
+    fi
+    echo "  $summary"
+    echo ""
+
+    if [ "$failures" -gt 0 ]; then
+        return 1
+    fi
+    return 0
+}
+
 cmd_help() {
     echo ""
     echo "${BOLD}AMIGA${RESET} — Autonomous Modular Interactive Graphical Agent"
@@ -546,9 +848,11 @@ cmd_help() {
     echo "  ${CYAN}status${RESET}             Show server, daemon, tasks, and cost"
     echo "  ${CYAN}logs${RESET}               Tail the monitoring log"
     echo "  ${CYAN}update${RESET}             Pull latest, update deps, rebuild frontend"
+    echo "  ${CYAN}doctor${RESET}             Check system health (Python, Node, deps, env, ...)"
     echo "  ${CYAN}db${RESET} \"<query>\"        Run a SQLite query against the task database"
     echo "  ${CYAN}install-daemon${RESET}     Install launchd daemon (macOS, start on login)"
     echo "  ${CYAN}uninstall-daemon${RESET}   Remove launchd daemon"
+    echo "  ${CYAN}uninstall${RESET}          Remove AMIGA from your system (keeps files)"
     echo "  ${CYAN}help${RESET}               Show this message"
     echo ""
     echo "${BOLD}Examples:${RESET}"
@@ -574,9 +878,11 @@ case "$COMMAND" in
     status)            cmd_status "$@" ;;
     logs)              cmd_logs "$@" ;;
     update)            cmd_update "$@" ;;
+    doctor)            cmd_doctor "$@" ;;
     db)                cmd_db "$@" ;;
     install-daemon)    cmd_install_daemon "$@" ;;
     uninstall-daemon)  cmd_uninstall_daemon "$@" ;;
+    uninstall)         cmd_uninstall "$@" ;;
     help|-h|--help)    cmd_help ;;
     *)
         err "Unknown command: $COMMAND"

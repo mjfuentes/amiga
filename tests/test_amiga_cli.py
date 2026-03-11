@@ -144,6 +144,7 @@ class TestAmigaCLIScriptStructure:
         expected = [
             "setup", "start", "stop", "restart", "status", "logs",
             "db", "help", "install_daemon", "uninstall_daemon", "update",
+            "doctor",
         ]
         for cmd in expected:
             assert f"cmd_{cmd}" in content, f"Missing function cmd_{cmd}"
@@ -287,3 +288,90 @@ class TestAmigaCLIStatusDaemon:
         result = run_cli("status")
         # Unless someone has it installed, should show not installed
         assert "not installed" in result.stdout or "installed" in result.stdout
+
+
+class TestAmigaCLIDoctor:
+    """Tests for the doctor command."""
+
+    def test_doctor_runs(self):
+        result = run_cli("doctor")
+        assert result.returncode == 0 or result.returncode == 1
+        assert "AMIGA Doctor" in result.stdout
+
+    def test_doctor_checks_python(self):
+        result = run_cli("doctor")
+        assert "Checking Python..." in result.stdout
+
+    def test_doctor_checks_node(self):
+        result = run_cli("doctor")
+        assert "Checking Node..." in result.stdout
+
+    def test_doctor_checks_jq(self):
+        result = run_cli("doctor")
+        assert "Checking jq..." in result.stdout
+
+    def test_doctor_checks_venv(self):
+        result = run_cli("doctor")
+        assert "Checking venv..." in result.stdout
+
+    def test_doctor_checks_dependencies(self):
+        result = run_cli("doctor")
+        assert "Checking dependencies..." in result.stdout
+
+    def test_doctor_checks_env(self):
+        result = run_cli("doctor")
+        assert "Checking .env..." in result.stdout
+
+    def test_doctor_checks_env_permissions(self):
+        result = run_cli("doctor")
+        assert "Checking .env permissions..." in result.stdout
+
+    def test_doctor_checks_frontend(self):
+        result = run_cli("doctor")
+        assert "Checking frontend build..." in result.stdout
+
+    def test_doctor_checks_database(self):
+        result = run_cli("doctor")
+        assert "Checking database..." in result.stdout
+
+    def test_doctor_checks_server(self):
+        result = run_cli("doctor")
+        assert "Checking server..." in result.stdout
+
+    def test_doctor_checks_daemon(self):
+        result = run_cli("doctor")
+        assert "Checking daemon..." in result.stdout
+
+    def test_doctor_checks_disk_space(self):
+        result = run_cli("doctor")
+        assert "Checking disk space..." in result.stdout
+
+    def test_doctor_shows_summary(self):
+        result = run_cli("doctor")
+        assert "checks passed" in result.stdout
+
+    def test_doctor_in_help(self):
+        result = run_cli("help")
+        assert "doctor" in result.stdout
+
+    def test_doctor_in_dispatch(self):
+        content = AMIGA_CLI.read_text()
+        assert "doctor)" in content
+        assert "cmd_doctor" in content
+
+    def test_doctor_all_12_checks_present(self):
+        """Verify all 12 checks are present in output."""
+        result = run_cli("doctor")
+        checks = [
+            "Python", "Node", "jq", "venv", "dependencies",
+            ".env...", ".env permissions", "frontend build",
+            "database", "server", "daemon", "disk space",
+        ]
+        for check in checks:
+            assert check in result.stdout, f"Missing check: {check}"
+
+    def test_doctor_output_alignment(self):
+        """Verify output lines are consistently formatted."""
+        result = run_cli("doctor")
+        lines = [l for l in result.stdout.split("\n") if "Checking" in l]
+        assert len(lines) == 12, f"Expected 12 check lines, got {len(lines)}"
