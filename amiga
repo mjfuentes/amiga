@@ -1,0 +1,355 @@
+#!/usr/bin/env bash
+# AMIGA CLI — one command to rule them all
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV_DIR="$SCRIPT_DIR/venv"
+DB_PATH="$SCRIPT_DIR/data/agentlab.db"
+LOG_PATH="$SCRIPT_DIR/logs/monitoring.log"
+ENV_FILE="$SCRIPT_DIR/.env"
+ENV_EXAMPLE="$SCRIPT_DIR/.env.example"
+PORT=3000
+
+# ---------------------------------------------------------------------------
+# Colors (graceful degradation if tput unavailable)
+# ---------------------------------------------------------------------------
+if command -v tput >/dev/null 2>&1 && [ -t 1 ]; then
+    BOLD=$(tput bold)
+    DIM=$(tput dim)
+    GREEN=$(tput setaf 2)
+    YELLOW=$(tput setaf 3)
+    RED=$(tput setaf 1)
+    CYAN=$(tput setaf 6)
+    RESET=$(tput sgr0)
+else
+    BOLD="" DIM="" GREEN="" YELLOW="" RED="" CYAN="" RESET=""
+fi
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+info()  { echo "${GREEN}>>>${RESET} $*"; }
+warn()  { echo "${YELLOW}!!${RESET} $*"; }
+err()   { echo "${RED}ERROR:${RESET} $*" >&2; }
+step()  { echo ""; echo "${BOLD}${CYAN}--- $* ---${RESET}"; }
+dim()   { echo "${DIM}    $*${RESET}"; }
+
+server_pid() {
+    lsof -ti:$PORT 2>/dev/null || true
+}
+
+is_running() {
+    [ -n "$(server_pid)" ]
+}
+
+activate_venv() {
+    if [ ! -d "$VENV_DIR" ]; then
+        err "No venv found. Run './amiga setup' first."
+        exit 1
+    fi
+    # shellcheck disable=SC1091
+    source "$VENV_DIR/bin/activate"
+    export PYTHONPATH="$SCRIPT_DIR:${PYTHONPATH:-}"
+}
+
+require_db() {
+    if [ ! -f "$DB_PATH" ]; then
+        err "Database not found at $DB_PATH"
+        dim "Start the server first: ./amiga start"
+        exit 1
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
+
+cmd_setup() {
+    echo ""
+    echo "${BOLD}AMIGA Setup${RESET}"
+    echo "==========="
+    echo ""
+
+    # --- Python version ---
+    step "Checking Python"
+    if ! command -v python3 >/dev/null 2>&1; then
+        err "python3 not found. Install Python 3.12+ and try again."
+        exit 1
+    fi
+    PY_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+    PY_MAJOR=$(echo "$PY_VERSION" | cut -d. -f1)
+    PY_MINOR=$(echo "$PY_VERSION" | cut -d. -f2)
+    if [ "$PY_MAJOR" -lt 3 ] || { [ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -lt 12 ]; }; then
+        err "Python 3.12+ required (found $PY_VERSION)"
+        exit 1
+    fi
+    info "Python $PY_VERSION"
+
+    # --- jq ---
+    if ! command -v jq >/dev/null 2>&1; then
+        warn "jq not found. Some features (hooks, CLI operations) need it."
+        dim "Install with: brew install jq"
+    fi
+
+    # --- Virtual environment ---
+    step "Virtual environment"
+    if [ -d "$VENV_DIR" ]; then
+        info "Already exists at venv/"
+    else
+        info "Creating venv..."
+        python3 -m venv "$VENV_DIR"
+        info "Created"
+    fi
+    # shellcheck disable=SC1091
+    source "$VENV_DIR/bin/activate"
+
+    # --- Dependencies ---
+    step "Installing dependencies"
+    pip install --upgrade pip --quiet
+    pip install -r "$SCRIPT_DIR/requirements.txt" --quiet
+    info "All packages installed"
+
+    # --- Pre-commit ---
+    step "Pre-commit hooks"
+    if command -v pre-commit >/dev/null 2>&1; then
+        (cd "$SCRIPT_DIR" && pre-commit install --quiet)
+        info "Hooks installed"
+    else
+        pip install pre-commit --quiet
+        (cd "$SCRIPT_DIR" && pre-commit install --quiet)
+        info "Hooks installed"
+    fi
+
+    # --- Environment file ---
+    step "Environment configuration"
+    if [ -f "$ENV_FILE" ]; then
+        info ".env already exists"
+        # Check if key variables are set
+        if grep -q "^ANTHROPIC_API_KEY=your_anthropic_api_key_here" "$ENV_FILE" 2>/dev/null || \
+           grep -q "^ANTHROPIC_API_KEY=$" "$ENV_FILE" 2>/dev/null; then
+            warn "ANTHROPIC_API_KEY is not configured in .env"
+            configure_env_interactive
+        else
+            dim "To reconfigure, edit .env directly"
+        fi
+    else
+        if [ -f "$ENV_EXAMPLE" ]; then
+            cp "$ENV_EXAMPLE" "$ENV_FILE"
+            info "Created .env from .env.example"
+        else
+            touch "$ENV_FILE"
+            info "Created empty .env"
+        fi
+        configure_env_interactive
+    fi
+
+    # --- Data and log directories ---
+    mkdir -p "$SCRIPT_DIR/data" "$SCRIPT_DIR/logs" "$SCRIPT_DIR/static/chat"
+
+    # --- Build frontend ---
+    step "Building chat frontend"
+    if [ -f "$SCRIPT_DIR/deploy.sh" ]; then
+        info "Running deploy.sh chat..."
+        (cd "$SCRIPT_DIR" && bash deploy.sh chat)
+    else
+        warn "deploy.sh not found. Skipping frontend build."
+        dim "You can build manually later."
+    fi
+
+    # --- Done ---
+    echo ""
+    echo "${BOLD}${GREEN}Setup complete.${RESET}"
+    echo ""
+    echo "  Chat UI:    ${CYAN}http://localhost:$PORT${RESET}"
+    echo "  Dashboard:  ${CYAN}http://localhost:$PORT/dashboard${RESET}"
+    echo ""
+    echo "  ${DIM}./amiga start    Start the server${RESET}"
+    echo "  ${DIM}./amiga stop     Stop the server${RESET}"
+    echo "  ${DIM}./amiga status   Check what's running${RESET}"
+    echo "  ${DIM}./amiga logs     Tail the logs${RESET}"
+    echo "  ${DIM}./amiga help     All commands${RESET}"
+    echo ""
+}
+
+configure_env_interactive() {
+    echo ""
+
+    # ANTHROPIC_API_KEY
+    echo -n "${BOLD}Anthropic API key${RESET} (sk-ant-...): "
+    read -r api_key
+    if [ -z "$api_key" ]; then
+        err "API key cannot be empty. Set it later in .env"
+    else
+        if grep -q "^ANTHROPIC_API_KEY=" "$ENV_FILE" 2>/dev/null; then
+            sed -i.bak "s|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=$api_key|" "$ENV_FILE"
+            rm -f "$ENV_FILE.bak"
+        else
+            echo "ANTHROPIC_API_KEY=$api_key" >> "$ENV_FILE"
+        fi
+        info "API key saved"
+    fi
+
+    # WORKSPACE_PATH
+    default_workspace="$HOME/Workspace"
+    echo -n "${BOLD}Workspace path${RESET} [$default_workspace]: "
+    read -r workspace
+    workspace="${workspace:-$default_workspace}"
+    if grep -q "^WORKSPACE_PATH=" "$ENV_FILE" 2>/dev/null; then
+        sed -i.bak "s|^WORKSPACE_PATH=.*|WORKSPACE_PATH=$workspace|" "$ENV_FILE"
+        rm -f "$ENV_FILE.bak"
+    else
+        echo "WORKSPACE_PATH=$workspace" >> "$ENV_FILE"
+    fi
+    info "Workspace: $workspace"
+
+    # Cost limits (optional)
+    echo ""
+    echo -n "Set cost limits? [y/N]: "
+    read -r set_limits
+    if [[ "$set_limits" =~ ^[Yy] ]]; then
+        echo -n "  Daily limit USD [100]: "
+        read -r daily
+        daily="${daily:-100}"
+        sed -i.bak "s|^DAILY_COST_LIMIT=.*|DAILY_COST_LIMIT=$daily|" "$ENV_FILE"
+        rm -f "$ENV_FILE.bak"
+
+        echo -n "  Monthly limit USD [1000]: "
+        read -r monthly
+        monthly="${monthly:-1000}"
+        sed -i.bak "s|^MONTHLY_COST_LIMIT=.*|MONTHLY_COST_LIMIT=$monthly|" "$ENV_FILE"
+        rm -f "$ENV_FILE.bak"
+
+        info "Limits set: \$$daily/day, \$$monthly/month"
+    fi
+}
+
+cmd_start() {
+    if is_running; then
+        warn "Server already running on port $PORT (PID: $(server_pid))"
+        dim "http://localhost:$PORT"
+        exit 0
+    fi
+
+    activate_venv
+    info "Starting server..."
+    (cd "$SCRIPT_DIR" && bash deploy.sh chat)
+}
+
+cmd_stop() {
+    if ! is_running; then
+        info "Server is not running"
+        exit 0
+    fi
+
+    info "Stopping server on port $PORT..."
+    local pids
+    pids=$(server_pid)
+    if [ -n "$pids" ]; then
+        echo "$pids" | xargs kill -TERM 2>/dev/null || true
+        sleep 2
+        # Force kill stragglers
+        pids=$(server_pid)
+        if [ -n "$pids" ]; then
+            echo "$pids" | xargs kill -9 2>/dev/null || true
+        fi
+    fi
+    info "Stopped"
+}
+
+cmd_status() {
+    echo ""
+    echo "${BOLD}AMIGA Status${RESET}"
+    echo ""
+
+    # Server
+    if is_running; then
+        echo "  Server:  ${GREEN}running${RESET} (PID: $(server_pid)) on port $PORT"
+    else
+        echo "  Server:  ${RED}stopped${RESET}"
+    fi
+
+    # Active tasks
+    if [ -f "$DB_PATH" ]; then
+        local running_count
+        running_count=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM tasks WHERE status = 'running';" 2>/dev/null || echo "?")
+        local pending_count
+        pending_count=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM tasks WHERE status = 'pending';" 2>/dev/null || echo "?")
+        echo "  Tasks:   ${running_count} running, ${pending_count} pending"
+
+        # Today's cost (from cost_tracking.json if available)
+        local cost_file="$SCRIPT_DIR/data/cost_tracking.json"
+        if [ -f "$cost_file" ] && command -v jq >/dev/null 2>&1; then
+            local today
+            today=$(date +%Y-%m-%d)
+            local cost
+            cost=$(jq -r ".daily[\"$today\"] // 0" "$cost_file" 2>/dev/null || echo "0")
+            echo "  Cost:    \$$cost today"
+        fi
+    else
+        echo "  Tasks:   ${DIM}no database yet${RESET}"
+    fi
+
+    echo ""
+}
+
+cmd_logs() {
+    if [ ! -f "$LOG_PATH" ]; then
+        err "No log file at $LOG_PATH"
+        dim "Start the server first: ./amiga start"
+        exit 1
+    fi
+    tail -f "$LOG_PATH"
+}
+
+cmd_db() {
+    require_db
+    if [ $# -eq 0 ]; then
+        err "Usage: ./amiga db \"SQL query\""
+        dim "Example: ./amiga db \"SELECT task_id, status FROM tasks ORDER BY updated_at DESC LIMIT 5;\""
+        exit 1
+    fi
+    sqlite3 -header -column "$DB_PATH" "$1"
+}
+
+cmd_help() {
+    echo ""
+    echo "${BOLD}AMIGA${RESET} — Autonomous Modular Interactive Graphical Agent"
+    echo ""
+    echo "${BOLD}Usage:${RESET} ./amiga <command>"
+    echo ""
+    echo "${BOLD}Commands:${RESET}"
+    echo "  ${CYAN}setup${RESET}            Interactive onboarding (venv, deps, API keys, build)"
+    echo "  ${CYAN}start${RESET}            Start the monitoring server"
+    echo "  ${CYAN}stop${RESET}             Stop the server"
+    echo "  ${CYAN}status${RESET}           Show server, tasks, and cost"
+    echo "  ${CYAN}logs${RESET}             Tail the monitoring log"
+    echo "  ${CYAN}db${RESET} \"<query>\"      Run a SQLite query against the task database"
+    echo "  ${CYAN}help${RESET}             Show this message"
+    echo ""
+    echo "${BOLD}Examples:${RESET}"
+    echo "  ./amiga setup"
+    echo "  ./amiga start"
+    echo "  ./amiga db \"SELECT task_id, status FROM tasks ORDER BY updated_at DESC LIMIT 5;\""
+    echo ""
+}
+
+# ---------------------------------------------------------------------------
+# Dispatch
+# ---------------------------------------------------------------------------
+COMMAND="${1:-help}"
+shift || true
+
+case "$COMMAND" in
+    setup)   cmd_setup "$@" ;;
+    start)   cmd_start "$@" ;;
+    stop)    cmd_stop "$@" ;;
+    status)  cmd_status "$@" ;;
+    logs)    cmd_logs "$@" ;;
+    db)      cmd_db "$@" ;;
+    help|-h|--help) cmd_help ;;
+    *)
+        err "Unknown command: $COMMAND"
+        cmd_help
+        exit 1
+        ;;
+esac
