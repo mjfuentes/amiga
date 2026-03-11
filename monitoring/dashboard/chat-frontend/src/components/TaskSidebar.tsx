@@ -25,6 +25,7 @@ interface ToolUsage {
 
 interface TaskSidebarProps {
   visible: boolean;
+  onTaskClick?: (taskId: string) => void;
 }
 
 /**
@@ -40,7 +41,7 @@ interface TaskSidebarProps {
  *
  * See docs/CHAT_INTERFACE_UX.md for complete navigation pattern documentation.
  */
-export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
+export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible, onTaskClick }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [connected, setConnected] = useState(false);
   const [filter, setFilter] = useState<'active' | 'completed'>('active');
@@ -191,8 +192,9 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
   };
 
   const handleTaskClick = (taskId: string) => {
-    // Navigate to monitoring dashboard with task highlighted and referrer info
-    window.location.href = `/dashboard#${taskId}?ref=chat`;
+    if (onTaskClick) {
+      onTaskClick(taskId);
+    }
   };
 
   const handleMarkFixed = async (taskId: string, event: React.MouseEvent) => {
@@ -242,7 +244,7 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
       if (filter === 'active') {
         return task.status === 'running' || task.status === 'pending';
       } else {
-        return task.status === 'completed' || task.status === 'failed' || task.status === 'stopped';
+        return task.status === 'completed' || task.status === 'failed';
       }
     })
     .sort((a, b) => {
@@ -256,7 +258,7 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible }) => {
 
   // Calculate counts from full task list (not filtered)
   const activeCount = tasks.filter(t => t.status === 'running' || t.status === 'pending').length;
-  const completedCount = tasks.filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'stopped').length;
+  const completedCount = tasks.filter(t => t.status === 'completed' || t.status === 'failed').length;
 
   return (
     <div className="task-sidebar">
