@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from claude.sdk_hooks import (
     BLOCKED_GIT_PATTERNS,
     _check_blocked_git_command,
+    _safe_get,
     build_hooks,
     create_post_tool_hook,
     create_pre_tool_hook,
@@ -282,14 +283,11 @@ class TestBuildHooks:
             assert len(matchers) == 1
             assert isinstance(matchers[0], HookMatcher)
 
-    def test_pre_and_post_matchers_have_empty_string_matcher(self):
+    def test_all_matchers_use_none_for_match_all(self):
         hooks = build_hooks(None, "task-001")
-        assert hooks["PreToolUse"][0].matcher == ""
-        assert hooks["PostToolUse"][0].matcher == ""
-
-    def test_stop_matcher_has_no_matcher(self):
-        hooks = build_hooks(None, "task-001")
-        # Stop matcher defaults to None (matches all)
+        # All matchers use None (SDK default) to match all tools
+        assert hooks["PreToolUse"][0].matcher is None
+        assert hooks["PostToolUse"][0].matcher is None
         assert hooks["Stop"][0].matcher is None
 
     def test_each_matcher_has_one_hook(self):
@@ -322,3 +320,122 @@ class TestBlockedGitPatterns:
             assert isinstance(pattern, str)
             assert isinstance(reason, str)
             assert len(reason) > 0
+
+
+class TestSafeGet:
+    """Tests for the _safe_get helper."""
+
+    def test_returns_value_from_dict(self):
+        assert _safe_get({"key": "val"}, "key") == "val"
+
+    def test_returns_default_for_missing_key(self):
+        assert _safe_get({"a": 1}, "b", "default") == "default"
+
+    def test_returns_default_for_none_input(self):
+        assert _safe_get(None, "key", "fallback") == "fallback"
+
+    def test_returns_none_default_when_not_specified(self):
+        assert _safe_get(None, "key") is None
+
+    def test_returns_default_for_non_dict_input(self):
+        assert _safe_get(42, "key", "fallback") == "fallback"
+
+    def test_returns_default_for_string_input(self):
+        assert _safe_get("not a dict", "key", "fallback") == "fallback"
+
+
+class TestHookDefensiveBehavior:
+    """Tests that hooks never raise exceptions, even when tracker crashes."""
+
+    @pytest.mark.asyncio
+    async def test_pre_hook_survives_tracker_exception(self):
+        tracker = MagicMock()
+        tracker.record_tool_start = MagicMock(
+            side_effect=RuntimeError("DB connection lost")
+        )
+        hook = create_pre_tool_hook(tracker, "task-err")
+        result = await hook(
+            {"tool_name": "Read", "tool_input": {"file_path": "/tmp/x"}},
+            "use-1",
+            _make_context(),
+        )
+        # Must return a valid dict, never raise
+        assert isinstance(result, dict)
+        assert "decision" not in result
+
+    @pytest.mark.asyncio
+    async def test_post_hook_survives_tracker_exception(self):
+        tracker = MagicMock()
+        tracker.record_tool_complete = MagicMock(
+            side_effect=RuntimeError("DB write failed")
+        )
+        hook = create_post_tool_hook(tracker, "task-err")
+        result = await hook(
+            {"tool_name": "Bash", "tool_input": {"command": "ls"}},
+            "use-2",
+            _make_context(),
+        )
+        assert isinstance(result, dict)
+        assert "decision" not in result
+
+    @pytest.mark.asyncio
+    async def test_stop_hook_survives_tracker_exception(self):
+        tracker = MagicMock()
+        tracker.record_status_change = MagicMock(
+            side_effect=RuntimeError("DB error")
+        )
+        hook = create_stop_hook(tracker, "task-err")
+        result = await hook(
+            {"hook_event_name": "Stop", "stop_hook_active": True},
+            None,
+            _make_context(),
+        )
+        assert isinstance(result, dict)
+        assert "decision" not in result
+
+    @pytest.mark.asyncio
+    async def test_pre_hook_handles_none_hook_input(self):
+        hook = create_pre_tool_hook(None, "task-nil")
+        result = await hook(None, None, _make_context())
+        assert isinstance(result, dict)
+
+    @pytest.mark.asyncio
+    async def test_post_hook_handles_none_hook_input(self):
+        hook = create_post_tool_hook(None, "task-nil")
+        result = await hook(None, None, _make_context())
+        assert isinstance(result, dict)
+
+    @pytest.mark.asyncio
+    async def test_pre_hook_handles_none_tool_input(self):
+        hook = create_pre_tool_hook(None, "task-nil2")
+        result = await hook(
+            {"tool_name": "Bash", "tool_input": None},
+            "use-3",
+            _make_context(),
+        )
+        assert isinstance(result, dict)
+
+    @pytest.mark.asyncio
+    async def test_pre_hook_returns_plain_dict(self):
+        """Hook must return a plain dict, not a TypedDict subclass that
+        might serialize differently."""
+        hook = create_pre_tool_hook(None, "task-plain")
+        result = await hook(
+            {"tool_name": "Read", "tool_input": {}},
+            "use-4",
+            _make_context(),
+        )
+        assert result == {}
+        assert type(result) is dict
+
+    @pytest.mark.asyncio
+    async def test_block_result_is_plain_dict(self):
+        """Block responses must also be plain dicts."""
+        hook = create_pre_tool_hook(None, "task-block")
+        result = await hook(
+            {"tool_name": "Bash", "tool_input": {"command": "git push --force origin"}},
+            "use-5",
+            _make_context(),
+        )
+        assert result["decision"] == "block"
+        assert type(result) is dict

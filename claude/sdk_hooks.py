@@ -3,10 +3,14 @@ SDK hook callbacks for AMIGA.
 
 Replaces shell script hooks with Python callbacks that write
 directly to the SQLite database via ToolUsageTracker.
+
+IMPORTANT: All hook callbacks are wrapped in try/except to prevent
+exceptions from crashing the SDK transport layer. An unhandled exception
+in a hook callback causes the Claude Code subprocess to emit
+"Error in hook callback" and terminate the stream.
 """
 
 import logging
-import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -40,10 +44,26 @@ HookCallbackType = Callable[
 ]
 
 
-def _check_blocked_git_command(command: str) -> SyncHookJSONOutput | None:
+def _safe_get(hook_input: Any, key: str, default: Any = None) -> Any:
+    """Safely extract a value from hook_input, handling None inputs.
+
+    The SDK may pass None as hook_input if request_data.get("input")
+    returns None.  Calling .get() on None would raise AttributeError
+    and crash the hook callback.
+    """
+    if hook_input is None:
+        return default
+    try:
+        return hook_input.get(key, default)
+    except AttributeError:
+        return default
+
+
+def _check_blocked_git_command(command: str) -> dict[str, str] | None:
     """Check if a command contains a blocked git pattern.
 
-    Returns a block response if the command should be blocked, None otherwise.
+    Returns a block response dict if the command should be blocked,
+    None otherwise.
     """
     if "git" not in command:
         return None
@@ -51,7 +71,7 @@ def _check_blocked_git_command(command: str) -> SyncHookJSONOutput | None:
     for pattern, reason in BLOCKED_GIT_PATTERNS:
         if pattern in command:
             logger.warning(f"Blocked git command: {reason} (pattern={pattern!r})")
-            return SyncHookJSONOutput(decision="block", reason=reason)
+            return {"decision": "block", "reason": reason}
 
     return None
 
@@ -63,6 +83,8 @@ def create_pre_tool_hook(
     """Create a PreToolUse hook callback.
 
     Logs tool invocations and blocks dangerous git operations.
+    All tracker calls are wrapped in try/except so they never crash
+    the hook callback.
     """
 
     async def pre_tool_callback(
@@ -70,24 +92,34 @@ def create_pre_tool_hook(
         tool_use_id: str | None,
         context: HookContext,
     ) -> SyncHookJSONOutput:
-        tool_name = hook_input.get("tool_name", "unknown")
-        tool_input = hook_input.get("tool_input", {})
+        try:
+            tool_name = _safe_get(hook_input, "tool_name", "unknown")
+            tool_input = _safe_get(hook_input, "tool_input", {})
 
-        logger.debug(f"Task {task_id}: PreToolUse tool={tool_name}")
+            logger.debug(f"Task {task_id}: PreToolUse tool={tool_name}")
 
-        # Record tool start in tracker
-        if tracker:
-            params = dict(tool_input) if tool_input else {}
-            tracker.record_tool_start(task_id, tool_name, params)
+            # Record tool start in tracker (never let this crash the hook)
+            if tracker:
+                try:
+                    params = dict(tool_input) if tool_input else {}
+                    tracker.record_tool_start(task_id, tool_name, params)
+                except Exception as tracker_err:
+                    logger.warning(
+                        f"Task {task_id}: Failed to record tool start: {tracker_err}"
+                    )
 
-        # Only check Bash tool commands for dangerous git patterns
-        if tool_name == "Bash":
-            command = tool_input.get("command", "")
-            block_result = _check_blocked_git_command(command)
-            if block_result is not None:
-                return block_result
+            # Only check Bash tool commands for dangerous git patterns
+            if tool_name == "Bash":
+                command = _safe_get(tool_input, "command", "")
+                if command:
+                    block_result = _check_blocked_git_command(command)
+                    if block_result is not None:
+                        return block_result
 
-        return SyncHookJSONOutput()
+            return {}
+        except Exception as exc:
+            logger.error(f"Task {task_id}: Pre-tool hook error: {exc}")
+            return {}
 
     return pre_tool_callback
 
@@ -99,6 +131,8 @@ def create_post_tool_hook(
     """Create a PostToolUse hook callback.
 
     Records tool completion to the tracker with duration info.
+    All tracker calls are wrapped in try/except so they never crash
+    the hook callback.
     """
 
     async def post_tool_callback(
@@ -106,24 +140,31 @@ def create_post_tool_hook(
         tool_use_id: str | None,
         context: HookContext,
     ) -> SyncHookJSONOutput:
-        tool_name = hook_input.get("tool_name", "unknown")
-        tool_input = hook_input.get("tool_input", {})
+        try:
+            tool_name = _safe_get(hook_input, "tool_name", "unknown")
+            tool_input = _safe_get(hook_input, "tool_input", {})
 
-        logger.debug(f"Task {task_id}: PostToolUse tool={tool_name}")
+            logger.debug(f"Task {task_id}: PostToolUse tool={tool_name}")
 
-        if tracker:
-            params = dict(tool_input) if tool_input else {}
-            # Duration is not directly available in the hook input;
-            # record with zero and let the tracker handle timing externally.
-            tracker.record_tool_complete(
-                task_id=task_id,
-                tool_name=tool_name,
-                duration_ms=0.0,
-                success=True,
-                parameters=params,
-            )
+            if tracker:
+                try:
+                    params = dict(tool_input) if tool_input else {}
+                    tracker.record_tool_complete(
+                        task_id=task_id,
+                        tool_name=tool_name,
+                        duration_ms=0.0,
+                        success=True,
+                        parameters=params,
+                    )
+                except Exception as tracker_err:
+                    logger.warning(
+                        f"Task {task_id}: Failed to record tool complete: {tracker_err}"
+                    )
 
-        return SyncHookJSONOutput()
+            return {}
+        except Exception as exc:
+            logger.error(f"Task {task_id}: Post-tool hook error: {exc}")
+            return {}
 
     return post_tool_callback
 
@@ -135,6 +176,8 @@ def create_stop_hook(
     """Create a Stop hook callback.
 
     Logs session completion for the task.
+    All tracker calls are wrapped in try/except so they never crash
+    the hook callback.
     """
 
     async def stop_callback(
@@ -142,14 +185,23 @@ def create_stop_hook(
         tool_use_id: str | None,
         context: HookContext,
     ) -> SyncHookJSONOutput:
-        logger.info(f"Task {task_id}: Session ending (Stop hook)")
+        try:
+            logger.info(f"Task {task_id}: Session ending (Stop hook)")
 
-        if tracker:
-            tracker.record_status_change(
-                task_id, "session_ended", "Claude session completed"
-            )
+            if tracker:
+                try:
+                    tracker.record_status_change(
+                        task_id, "session_ended", "Claude session completed"
+                    )
+                except Exception as tracker_err:
+                    logger.warning(
+                        f"Task {task_id}: Failed to record status change: {tracker_err}"
+                    )
 
-        return SyncHookJSONOutput()
+            return {}
+        except Exception as exc:
+            logger.error(f"Task {task_id}: Stop hook error: {exc}")
+            return {}
 
     return stop_callback
 
@@ -167,13 +219,18 @@ def build_hooks(
     Returns:
         Dictionary mapping hook event names to lists of HookMatchers,
         ready to pass to ClaudeAgentOptions(hooks=...).
+
+    Notes:
+        - matcher=None means "match all tools" (SDK default).
+        - Using None instead of "" avoids potential matching issues
+          where empty string might not match tool names as expected.
     """
     pre_hook = create_pre_tool_hook(tracker, task_id)
     post_hook = create_post_tool_hook(tracker, task_id)
     stop_hook = create_stop_hook(tracker, task_id)
 
     return {
-        "PreToolUse": [HookMatcher(matcher="", hooks=[pre_hook])],
-        "PostToolUse": [HookMatcher(matcher="", hooks=[post_hook])],
-        "Stop": [HookMatcher(hooks=[stop_hook])],
+        "PreToolUse": [HookMatcher(matcher=None, hooks=[pre_hook])],
+        "PostToolUse": [HookMatcher(matcher=None, hooks=[post_hook])],
+        "Stop": [HookMatcher(matcher=None, hooks=[stop_hook])],
     }
