@@ -629,15 +629,18 @@ async def _handle_message_async(data, user_id: str, session_id: str = "default")
     from claude.api_client import ask_claude
     from claude.sdk_client import discover_repositories
 
+    # Use active project path if available, fallback to WORKSPACE_PATH
+    effective_workspace = _get_effective_workspace()
+
     # Call Claude API asynchronously
     response, background_task_info, usage_info = await ask_claude(
         user_query=message_text,
         input_method="text",
         conversation_history=history,
-        current_workspace=session_manager.get_workspace(user_id, session_id) or workspace_path,
+        current_workspace=session_manager.get_workspace(user_id, session_id) or effective_workspace,
         bot_repository=BOT_REPOSITORY,
-        workspace_path=workspace_path,
-        available_repositories=discover_repositories(workspace_path) if workspace_path else [],
+        workspace_path=effective_workspace,
+        available_repositories=discover_repositories(effective_workspace) if effective_workspace else [],
         active_tasks=task_manager.get_active_tasks(user_id),
     )
 
@@ -1431,7 +1434,9 @@ def create_task():
             return jsonify({"error": "Missing required field: prompt"}), 400
 
         # Get optional parameters with defaults
-        workspace = data.get("workspace", BOT_REPOSITORY)
+        # Use active project workspace if no explicit workspace provided
+        default_workspace = _get_effective_workspace() or BOT_REPOSITORY
+        workspace = data.get("workspace", default_workspace)
         model = data.get("model", "sonnet")
         agent_type = data.get("agent_type", "orchestrator")
         context = data.get("context")
@@ -1497,6 +1502,89 @@ def create_task():
     except Exception as e:
         logger.error(f"Error creating task via API: {e}", exc_info=True)
         return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+
+
+# --- Project Management API Endpoints ---
+
+
+def _get_effective_workspace() -> str:
+    """Return the active project path if set, otherwise fallback to WORKSPACE_PATH."""
+    from projects.registry import get_active_project
+
+    active_project = get_active_project()
+    if active_project:
+        return active_project.get("path", workspace_path)
+    return workspace_path
+
+
+@app.route("/api/projects")
+def api_projects():
+    """Return list of registered projects and the active project path."""
+    try:
+        from projects.registry import get_active_project, list_projects
+
+        projects = list_projects()
+        active = get_active_project()
+        return jsonify({"projects": projects, "active": active["path"] if active else None})
+    except Exception as e:
+        logger.error(f"Error listing projects: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/projects/switch", methods=["POST"])
+def api_switch_project():
+    """Switch active project by path."""
+    try:
+        from projects.registry import list_projects, set_active_project
+
+        data = request.get_json()
+        if not data or not data.get("path"):
+            return jsonify({"error": "path required"}), 400
+
+        path = data["path"]
+
+        # Verify project exists in registry
+        projects = list_projects()
+        if not any(p["path"] == path for p in projects):
+            return jsonify({"error": "Project not registered"}), 404
+
+        set_active_project(path)
+        return jsonify({"success": True, "active": path})
+    except Exception as e:
+        logger.error(f"Error switching project: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/projects/init", methods=["POST"])
+def api_init_project():
+    """Initialize (scan and register) a project from the web UI."""
+    try:
+        from projects.registry import register_project, set_active_project
+        from projects.scanner import scan_project
+
+        data = request.get_json()
+        if not data or not data.get("path"):
+            return jsonify({"error": "path required"}), 400
+
+        path = data["path"]
+        project_path = Path(path).resolve()
+        if not project_path.is_dir():
+            return jsonify({"error": f"Not a directory: {path}"}), 400
+
+        profile = scan_project(project_path)
+
+        # Write .amiga/profile.json
+        amiga_dir = project_path / ".amiga"
+        amiga_dir.mkdir(exist_ok=True)
+        (amiga_dir / "profile.json").write_text(json.dumps(profile, indent=2))
+
+        register_project(profile)
+        set_active_project(str(project_path))
+
+        return jsonify({"success": True, "profile": profile})
+    except Exception as e:
+        logger.error(f"Error initializing project: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
 
 
 # --- Monitoring API Endpoints (Existing) ---

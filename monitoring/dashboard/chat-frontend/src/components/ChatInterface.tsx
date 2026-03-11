@@ -15,6 +15,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import { Message as MessageType } from '../types';
 import { TaskModal } from './TaskModal';
 import { TokenIndicator } from './TokenIndicator';
+import { ProjectSwitcher } from './ProjectSwitcher';
 import './ChatInterface.css';
 
 interface ChatInterfaceProps {
@@ -640,6 +641,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             onClick={() => window.location.href = '/dashboard'}
             title="View monitoring dashboard"
           />
+          <ProjectSwitcher />
         </div>
         <TokenIndicator totalTokens={totalTokens} />
       </div>
