@@ -26,6 +26,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({ taskId, isOpen, onClose })
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [expandedTools, setExpandedTools] = useState<Set<number>>(new Set());
+  const [toolPage, setToolPage] = useState(0);
+  const TOOLS_PER_PAGE = 10;
   const [lightboxImage, setLightboxImage] = useState<{
     url: string;
     index: number;
@@ -57,19 +59,23 @@ export const TaskModal: React.FC<TaskModalProps> = ({ taskId, isOpen, onClose })
         setToolCalls(toolData.tool_calls || []);
       }
 
-      // Fetch documents
-      const docsResponse = await fetch(`${SOCKET_URL}/api/tasks/${taskId}/documents`);
-      if (docsResponse.ok) {
-        const docsData = await docsResponse.json();
-        setDocuments(docsData.documents || []);
-      }
+      // Fetch documents (optional — endpoint may not exist)
+      try {
+        const docsResponse = await fetch(`${SOCKET_URL}/api/tasks/${taskId}/documents`);
+        if (docsResponse.ok) {
+          const docsData = await docsResponse.json();
+          setDocuments(docsData.documents || []);
+        }
+      } catch { /* endpoint not available */ }
 
-      // Fetch screenshots
-      const screenshotsResponse = await fetch(`${SOCKET_URL}/api/tasks/${taskId}/screenshots`);
-      if (screenshotsResponse.ok) {
-        const screenshotsData = await screenshotsResponse.json();
-        setScreenshots(screenshotsData.screenshots || []);
-      }
+      // Fetch screenshots (optional — endpoint may not exist)
+      try {
+        const screenshotsResponse = await fetch(`${SOCKET_URL}/api/tasks/${taskId}/screenshots`);
+        if (screenshotsResponse.ok) {
+          const screenshotsData = await screenshotsResponse.json();
+          setScreenshots(screenshotsData.screenshots || []);
+        }
+      } catch { /* endpoint not available */ }
     } catch (err) {
       console.error('Error fetching task data:', err);
       setError(err instanceof Error ? err.message : 'Failed to load task data');
@@ -370,7 +376,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ taskId, isOpen, onClose })
             ) : taskDetails ? (
               <>
                 {/* Workflow Progress */}
-                {taskDetails.workflow && taskDetails.workflow.length > 0 && (
+                {Array.isArray(taskDetails.workflow) && taskDetails.workflow.length > 0 && (
                   <section className="task-section">
                     <h3 className="task-section-title">📋 Planning & Workflow</h3>
                     <div className="workflow-steps">
@@ -397,37 +403,69 @@ export const TaskModal: React.FC<TaskModalProps> = ({ taskId, isOpen, onClose })
                 )}
 
                 {/* Tool Usage */}
-                {toolCalls.length > 0 && (
+                {toolCalls.length > 0 && (() => {
+                  const totalPages = Math.ceil(toolCalls.length / TOOLS_PER_PAGE);
+                  const lastPage = totalPages - 1;
+                  const currentPage = Math.min(toolPage, lastPage);
+                  const startIdx = currentPage * TOOLS_PER_PAGE;
+                  const pageTools = toolCalls.slice(startIdx, startIdx + TOOLS_PER_PAGE);
+
+                  return (
                   <section className="task-section">
-                    <h3 className="task-section-title">🔧 Tool Execution Log</h3>
+                    <h3 className="task-section-title">
+                      🔧 Tool Execution Log
+                      <span className="tool-count">{toolCalls.length} calls</span>
+                    </h3>
+                    {totalPages > 1 && (
+                      <div className="tool-pagination">
+                        <button
+                          className="tool-page-btn"
+                          disabled={currentPage === 0}
+                          onClick={() => setToolPage(currentPage - 1)}
+                        >
+                          ‹ Prev
+                        </button>
+                        <span className="tool-page-info">
+                          {startIdx + 1}–{Math.min(startIdx + TOOLS_PER_PAGE, toolCalls.length)} of {toolCalls.length}
+                        </span>
+                        <button
+                          className="tool-page-btn"
+                          disabled={currentPage >= lastPage}
+                          onClick={() => setToolPage(currentPage + 1)}
+                        >
+                          Next ›
+                        </button>
+                      </div>
+                    )}
                     <div className="tool-calls-list">
-                      {toolCalls.map((tool, index) => (
+                      {pageTools.map((tool, pageIdx) => {
+                        const globalIdx = startIdx + pageIdx;
+                        return (
                         <div
-                          key={index}
-                          className={`tool-call ${tool.has_error ? 'tool-call-error' : ''} ${
+                          key={globalIdx}
+                          className={`tool-call tool-call-compact ${tool.has_error ? 'tool-call-error' : ''} ${
                             tool.in_progress ? 'tool-call-running' : ''
                           }`}
                         >
                           <div
-                            className="tool-call-header"
-                            onClick={() => toggleToolExpansion(index)}
+                            className="tool-call-header tool-call-header-compact"
+                            onClick={() => toggleToolExpansion(globalIdx)}
                           >
-                            <span className="tool-call-icon">
+                            <span className="tool-call-icon-compact">
                               {tool.in_progress ? '⟳' : tool.has_error ? '✗' : '✓'}
                             </span>
-                            <span className="tool-call-name">{tool.tool_name}</span>
-                            <span className="tool-call-time">{formatTimestamp(tool.timestamp)}</span>
+                            <span className="tool-call-name-compact">{tool.tool_name || tool.tool}</span>
                             {tool.duration_ms > 0 && (
                               <span className="tool-call-duration">
                                 {formatDuration(tool.duration_ms)}
                               </span>
                             )}
                             <span className="tool-call-expand">
-                              {expandedTools.has(index) ? '▼' : '▶'}
+                              {expandedTools.has(globalIdx) ? '▼' : '▶'}
                             </span>
                           </div>
 
-                          {expandedTools.has(index) && (
+                          {expandedTools.has(globalIdx) && (
                             <div className="tool-call-details">
                               {tool.parameters && (
                                 <div className="tool-call-section">
@@ -454,10 +492,12 @@ export const TaskModal: React.FC<TaskModalProps> = ({ taskId, isOpen, onClose })
                             </div>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </section>
-                )}
+                  );
+                })()}
 
                 {/* Documents */}
                 {documents.length > 0 && (
@@ -541,31 +581,31 @@ export const TaskModal: React.FC<TaskModalProps> = ({ taskId, isOpen, onClose })
                       <div className="token-usage-item">
                         <span className="token-label">Input:</span>
                         <span className="token-value">
-                          {taskDetails.token_usage.input_tokens.toLocaleString()}
+                          {(taskDetails.token_usage.input_tokens ?? 0).toLocaleString()}
                         </span>
                       </div>
                       <div className="token-usage-item">
                         <span className="token-label">Output:</span>
                         <span className="token-value">
-                          {taskDetails.token_usage.output_tokens.toLocaleString()}
+                          {(taskDetails.token_usage.output_tokens ?? 0).toLocaleString()}
                         </span>
                       </div>
                       <div className="token-usage-item">
                         <span className="token-label">Cache (created):</span>
-                        <span className="token-value">
-                          {taskDetails.token_usage.cache_creation_tokens.toLocaleString()}
+                        <span className="token_value">
+                          {(taskDetails.token_usage.cache_creation_tokens ?? 0).toLocaleString()}
                         </span>
                       </div>
                       <div className="token-usage-item">
                         <span className="token-label">Cache (read):</span>
                         <span className="token-value">
-                          {taskDetails.token_usage.cache_read_tokens.toLocaleString()}
+                          {(taskDetails.token_usage.cache_read_tokens ?? 0).toLocaleString()}
                         </span>
                       </div>
                       <div className="token-usage-item token-usage-total">
                         <span className="token-label">Total Cost:</span>
                         <span className="token-value">
-                          ${taskDetails.token_usage.total_cost.toFixed(4)}
+                          ${(taskDetails.token_usage.total_cost ?? 0).toFixed(4)}
                         </span>
                       </div>
                     </div>

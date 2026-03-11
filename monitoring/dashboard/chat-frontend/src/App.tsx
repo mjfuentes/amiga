@@ -4,6 +4,7 @@ import { useSocket } from './hooks/useSocket';
 import { AuthModal } from './components/AuthModal';
 import { ChatInterface } from './components/ChatInterface';
 import { TaskSidebar } from './components/TaskSidebar';
+import { TaskModal } from './components/TaskModal';
 import { SessionsSidebar } from './components/SessionsSidebar';
 import './App.css';
 
@@ -11,6 +12,18 @@ function App() {
   const { user, token, loading, login, register, logout } = useAuth();
   const { connected, messages, sendMessage, clearChat, totalTokens } = useSocket(token);
   const [chatViewActive, setChatViewActive] = useState(false);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+
+  const handleTaskClick = (taskId: string) => {
+    setSelectedTaskId(taskId);
+    setIsTaskModalOpen(true);
+  };
+
+  const handleTaskModalClose = () => {
+    setIsTaskModalOpen(false);
+    setSelectedTaskId(null);
+  };
 
   /**
    * SIDEBAR VISIBILITY CONTROL (Navigation Pattern)
@@ -48,7 +61,7 @@ function App() {
 
   return (
     <div className="App">
-      <TaskSidebar visible={showSidebar} />
+      <TaskSidebar visible={showSidebar} onTaskClick={handleTaskClick} />
       <ChatInterface
         messages={messages}
         connected={connected}
@@ -60,6 +73,11 @@ function App() {
         totalTokens={totalTokens}
       />
       <SessionsSidebar visible={showSidebar} />
+      <TaskModal
+        taskId={selectedTaskId}
+        isOpen={isTaskModalOpen}
+        onClose={handleTaskModalClose}
+      />
     </div>
   );
 }

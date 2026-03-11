@@ -1,5 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { io } from 'socket.io-client';
 import './TaskSidebar.css';
+
+const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || window.location.origin;
 
 interface Task {
   task_id: string;
@@ -116,6 +119,38 @@ export const TaskSidebar: React.FC<TaskSidebarProps> = ({ visible, onTaskClick }
       }
     };
   }, [visible]);
+
+  // Fetch tasks from REST endpoint (same data source as SSE)
+  const refreshTasksFromREST = useCallback(async () => {
+    try {
+      const response = await fetch(`${SOCKET_URL}/api/metrics/tasks`);
+      if (response.ok) {
+        const data = await response.json();
+        const taskList = data?.recent_24h?.tasks;
+        if (taskList && Array.isArray(taskList)) {
+          setTasks(taskList);
+        }
+      }
+    } catch {
+      // SSE will catch up on next cycle
+    }
+  }, []);
+
+  // Socket.IO listener for instant task updates (supplements SSE polling)
+  useEffect(() => {
+    if (!visible) return;
+
+    const socket = io(SOCKET_URL, {
+      transports: ['polling', 'websocket'],
+    });
+
+    socket.on('task_update', refreshTasksFromREST);
+    socket.on('task_stopped', refreshTasksFromREST);
+
+    return () => {
+      socket.close();
+    };
+  }, [visible, refreshTasksFromREST]);
 
   const formatTaskId = (taskId: string) => {
     // Extract short ID (first 6 chars after "task_")

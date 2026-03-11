@@ -38,7 +38,8 @@ export interface TokenUsage {
 }
 
 export interface ToolCallDetail {
-  tool_name: string;
+  tool_name?: string;
+  tool?: string;
   timestamp: string;
   parameters?: Record<string, any>;
   success: boolean | null;
