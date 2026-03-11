@@ -228,6 +228,13 @@ analytics_db = AnalyticsDB(user_db)
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-secret-change-in-prod-IMPORTANT")
 TOKEN_EXPIRATION_HOURS = 1
 
+# Initialize auth session manager (uses same database as user_db)
+from core.config import DATABASE_PATH_STR  # noqa: E402
+auth_session_manager = AuthSessionManager(db_path=DATABASE_PATH_STR)
+
+# Initialize auth middleware with secret key and session manager
+init_auth_middleware(SECRET_KEY, auth_session_manager)
+
 
 def hash_password(password: str) -> str:
     """Hash password with bcrypt."""
@@ -296,7 +303,7 @@ def register_user(username: str, email: str, password: str) -> tuple[bool, str]:
         return False, "Failed to create user"
 
 
-def login_user(username: str, password: str) -> tuple[bool, str]:
+def login_user(username: str, password: str) -> tuple[bool, dict | str]:
     """
     Login user using SQLite database.
 
@@ -305,7 +312,7 @@ def login_user(username: str, password: str) -> tuple[bool, str]:
         password: Plain text password
 
     Returns:
-        Tuple of (success, token or error_message)
+        Tuple of (success, tokens_dict or error_message)
     """
     user = user_db.get_user_by_username(username)
     if not user:
@@ -314,8 +321,8 @@ def login_user(username: str, password: str) -> tuple[bool, str]:
     if not verify_password(password, user["password_hash"]):
         return False, "Invalid username or password"
 
-    tokens = generate_token(user["user_id"])  # Returns (access_token, refresh_token)
-    return True, tokens
+    access_token, refresh_token, session_id = AuthMiddleware.generate_tokens(user["user_id"])
+    return True, {"access_token": access_token, "refresh_token": refresh_token, "session_id": session_id}
 
 
 def get_user_info(user_id: str) -> dict | None:
@@ -897,10 +904,14 @@ def auth_login():
 
         success, result = login_user(username, password)
         if success:
-            # result is the JWT token, decode it to get user_id
-            user_id = verify_token(result)
+            tokens = result
+            user_id = pyjwt.decode(tokens["access_token"], SECRET_KEY, algorithms=["HS256"]).get("user_id")
             user_info = get_user_info(user_id)
-            return jsonify({"token": result, "user": user_info})
+            return jsonify({
+                "access_token": tokens["access_token"],
+                "refresh_token": tokens["refresh_token"],
+                "user": user_info,
+            })
         else:
             return jsonify({"error": result}), 401
 
