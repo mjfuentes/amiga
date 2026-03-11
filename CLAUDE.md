@@ -295,19 +295,26 @@ agentlab/
 │   └── check_*.py       # Validation scripts
 ├── docs/                # Documentation
 │   └── *.md             # Implementation notes, feature docs
+├── auth/                # Authentication
+│   ├── session_manager.py  # Database-backed session persistence (15-min access tokens, 30-day refresh)
+│   └── middleware.py    # Auth middleware (init_auth_middleware called at startup)
 ├── .claude/             # Claude Code configuration
-│   ├── agents/          # Agent definitions
+│   ├── agents/          # Agent definitions (YAML frontmatter + markdown body)
 │   │   ├── orchestrator.md            # Task coordinator
-│   │   ├── code_agent.md              # Backend implementation (Sonnet 4.6)
-│   │   ├── frontend_agent.md          # UI/UX development (Sonnet 4.6)
-│   │   ├── research_agent.md          # Analysis & proposals (Opus 4.6)
+│   │   ├── code_agent.md              # Backend implementation (model: sonnet)
+│   │   ├── frontend_agent.md          # UI/UX development (model: sonnet)
+│   │   ├── research_agent.md          # Analysis & proposals (model: opus)
 │   │   ├── Jenny.md                   # Spec verification
-│   │   ├── claude-md-compliance-checker.md  # Project compliance
-│   │   ├── code-quality-pragmatist.md       # Complexity detection
-│   │   ├── karen.md                   # Reality checks
+│   │   ├── claude-md-compliance-checker.md  # Project compliance (memory: project)
+│   │   ├── code-quality-pragmatist.md       # Complexity detection (memory: project)
+│   │   ├── karen.md                   # Reality checks (memory: project)
 │   │   ├── task-completion-validator.md     # Functional validation
 │   │   ├── ui-comprehensive-tester.md       # UI testing
-│   │   └── ultrathink-debugger.md           # Deep debugging (Opus 4.6)
+│   │   └── ultrathink-debugger.md           # Deep debugging (model: opus)
+│   ├── skills/          # Shared skill snippets injected into agents
+│   │   ├── coding-conventions/SKILL.md
+│   │   ├── git-workflow/SKILL.md
+│   │   └── testing-requirements/SKILL.md
 │   ├── hooks/           # Shell hook scripts (superseded by Python SDK callbacks in claude/sdk_hooks.py)
 │   └── settings.local.json  # Permissions, output style
 ├── data/                # Runtime state (sessions, tasks, costs)
@@ -640,26 +647,25 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 - `logs/*` (application logs)
 - `__pycache__/`, `*.pyc`
 
-### Worktree Management (Updated 2025-10-22)
+### Worktree Management (Updated 2026-03-11)
 
-**Current approach**: Workflows handle worktrees explicitly via git-worktree agent.
+**Current approach**: SDK creates worktrees natively via `--worktree` flag in `ClaudeSDKSession.execute_task()`. No separate git-worktree agent step needed for creation.
 
 **Workflow integration**:
-- Step 0: `git-worktree create-worktree` - Create isolated worktree
-- Step 1-N: Implementation work
-- Step N: `git-merge` - Merge branch to main
+- `execute_task(use_worktree=True)` → SDK creates branch `task/{task_id}` automatically
+- Step 1-N: Implementation work in isolated branch
+- Step N: `git-merge` agent merges branch to main
 - **Cleanup disabled**: Worktrees preserved in `/tmp/agentlab-worktrees/` for debugging
 - Manual cleanup available via `git-worktree cleanup-worktree` (only when user requests)
 
 **Rationale for disabled cleanup**:
 - Preserves worktrees for post-task analysis and debugging
-- Allows inspection of task-specific state after completion
 - Worktrees automatically cleared on system restart (in /tmp/)
 - Manual cleanup still available when explicitly needed
 
-**Deprecated**: `WorktreeManager` class (automatic worktree creation in session pool)
+**Deprecated**: `WorktreeManager` class (automatic worktree creation in session pool); git-worktree agent (creation step)
 
-See `.claude/agents/git-worktree.md` for details.
+See `.claude/agents/git-worktree.md` for merge/cleanup details.
 
 ### Pre-commit Hooks
 
@@ -810,6 +816,96 @@ python monitoring/server.py
 - Manual mode runs service in foreground (good for debugging)
 
 ## Project-Specific Patterns
+
+### Claude Agent SDK Integration
+
+**Primary execution path**: `claude/sdk_client.py` — replaces subprocess-based `code_cli.py`.
+
+#### ClaudeSDKSession / ClaudeSDKPool
+
+```python
+# ClaudeSDKPool: semaphore-based concurrency (max_concurrent=3)
+pool = ClaudeSDKPool(max_concurrent=3)
+
+# ClaudeSDKSession: single session wrapper
+session = ClaudeSDKSession(task_id, session_uuid)
+result = await session.execute_task(
+    prompt="...",
+    effort="high",          # low | medium | high | max
+    max_budget_usd=5.0,
+    use_worktree=True       # injects --worktree flag; SDK creates branch task/{task_id}
+)
+
+# Lightweight orchestrator invocation (discovers projects at runtime)
+await invoke_orchestrator_sdk(prompt, effort="low", max_budget_usd=0.50)
+```
+
+**Effort/budget constants**:
+| Constant | effort | max_budget_usd |
+|----------|--------|----------------|
+| `ORCHESTRATOR_EFFORT` | `"low"` | `0.50` |
+| `TASK_EFFORT` | `"high"` | `5.0` |
+| `DEBUG_EFFORT` | `"max"` | `10.0` |
+
+**ThinkingConfig mapping**:
+- `low` → disabled
+- `medium` → adaptive
+- `high` → enabled (16k tokens)
+- `max` → enabled (32k tokens)
+
+#### SDK Hooks (`claude/sdk_hooks.py`)
+
+Python callbacks registered with the SDK transport — not shell scripts.
+
+- **PreToolUse**: Logs tool call to `tool_usage` DB; blocks dangerous git ops:
+  - `--no-verify`, `push --force`, `push -f`, `reset --hard`
+- **PostToolUse**: Logs result/error to DB
+- **Stop**: Finalizes session record in DB
+
+**Crash-proof design**: ALL callbacks are wrapped in `try/except` — database errors never crash the SDK transport. Uses `matcher=None` (matches all tools), returns plain `{}` dicts.
+
+#### Agent Loader (`claude/agent_loader.py`)
+
+Parses `.claude/agents/*.md` files into `AgentDefinition` instances.
+
+**File format** (YAML frontmatter + markdown body):
+```yaml
+---
+name: code_agent
+description: Backend implementation specialist
+model: sonnet          # alias: sonnet | opus | haiku | inherit
+tools: [Read, Write, Edit, Bash, Glob, Grep]
+memory: project        # optional: enables persistent project memory (learning agents)
+permissionMode: plan   # optional: plan | dontAsk (QA agents use "plan")
+effortLevel: high      # optional: low | medium | high | max
+isolation: true        # optional: isolated execution context
+---
+Agent system prompt body here...
+```
+
+**Required frontmatter**: `name`, `description`, `tools`, `model`
+
+**Model aliases**: `sonnet` → claude-sonnet-*, `opus` → claude-opus-*, `haiku` → claude-haiku-*, `inherit` → inherits caller's model. Substring fallback matching also supported.
+
+**Public API**:
+```python
+from claude.agent_loader import parse_agent_file, load_agents, load_project_agents
+
+agents = load_project_agents(project_root)  # loads all .claude/agents/*.md
+```
+
+**Shared skills** (`.claude/skills/`): Skill snippets injected into agents that declare them. Current skills: `coding-conventions`, `git-workflow`, `testing-requirements`.
+
+**Learning agents** (memory: project): `self-improvement-agent`, `claude-md-compliance-checker`, `code-quality-pragmatist`, `karen` — persist observations across sessions.
+
+**QA agents** (permissionMode: plan): `task-completion-validator`, `claude-md-compliance-checker`, `jenny`, `code-quality-pragmatist` — require plan approval before tool use.
+
+### Auth Session Management
+
+`auth/session_manager.py` (`AuthSessionManager`) + `auth/middleware.py`:
+- Initialized at server startup: `init_auth_middleware(SECRET_KEY, auth_session_manager)`
+- Token lifetimes: 15-min access tokens, 30-day refresh tokens, 30-min inactivity timeout
+- Backed by shared `data/agentlab.db` (same database as tasks/tool_usage)
 
 ### Security: Input Sanitization
 
@@ -1013,16 +1109,13 @@ Tests in `tests/test_*.py`
 
 ### Hook System
 
-**Location**: `~/.claude/hooks/`
+**SDK hooks** (primary, `claude/sdk_hooks.py`): Python callbacks registered with `claude_agent_sdk`. Write tool usage directly to SQLite (`tool_usage` table). See Claude Agent SDK Integration section for details.
 
-**Hooks**:
-- `pre-tool-use`: Logs before tool execution
-- `post-tool-use`: Logs results/errors
-- `session-end`: Aggregates summary
+**Shell hooks** (`~/.claude/hooks/`): User-level hooks for developer experience (tmux reminders, git push review, Prettier auto-format). These run locally and are separate from the SDK transport hooks.
 
-**Data**: Written to JSONL logs + JSON databases
+**Data**: SDK hooks → SQLite `tool_usage` table. Shell hooks → JSONL logs.
 
-**Reading**: `hooks_reader.py` parses for metrics dashboard
+**Reading**: `hooks_reader.py` parses shell hook JSONL for the metrics dashboard.
 
 ### Cost Tracking
 
@@ -1047,11 +1140,11 @@ Tests in `tests/test_*.py`
 
 **Example**: "group therapy" → matches "groovetherapy" or "group-therapy"
 
-### Claude Code CLI Timeouts
+### SDK Task Timeouts
 
-**Issue**: Complex tasks can take >5 minutes, exceeding default timeout.
+**Issue**: Complex tasks can take >5 minutes.
 
-**Solution**: Timeout set to 300s (5 min) in `claude/code_cli.py`. For longer tasks, use `--timeout` flag.
+**Solution**: Use a higher `effort` level or increase `max_budget_usd` in `execute_task()`. The SDK transport manages timeout internally; `DEBUG_EFFORT` with `max_budget_usd=10.0` handles longest tasks. Legacy `code_cli.py` used a 300s subprocess timeout — no longer the primary path.
 
 ### Agent Pool Blocking
 
@@ -1183,6 +1276,6 @@ cat data/cost_tracking.json | jq
 
 ---
 
-**Last Updated**: 2025-10-23
+**Last Updated**: 2026-03-11
 **Maintained By**: Matias Fuentes
 **Claude Code Version**: Latest (Sonnet 4.6)
