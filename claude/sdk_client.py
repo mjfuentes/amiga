@@ -13,7 +13,7 @@ import logging
 import os
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -34,12 +34,47 @@ from utils.git import get_git_tracker
 
 logger = logging.getLogger(__name__)
 
+# Default workspace path fallback
+_DEFAULT_WORKSPACE_PATH = "/Users/matifuentes/Workspace"
+
+_EXCLUDED_DIRS = frozenset({
+    "__pycache__", "node_modules", ".git", ".venv", "venv",
+    ".tox", ".mypy_cache", ".pytest_cache", ".ruff_cache",
+})
+
+
+def _discover_projects() -> str:
+    """Discover project directories under WORKSPACE_PATH.
+
+    Returns a comma-separated string of project names found in the
+    workspace directory.  Hidden directories, common cache/venv
+    directories, and non-directory entries are excluded.
+    """
+    workspace = Path(os.environ.get("WORKSPACE_PATH", _DEFAULT_WORKSPACE_PATH))
+    if not workspace.is_dir():
+        logger.warning("WORKSPACE_PATH %s is not a valid directory", workspace)
+        return "no projects found"
+    try:
+        projects = sorted(
+            entry.name
+            for entry in workspace.iterdir()
+            if entry.is_dir()
+            and not entry.name.startswith(".")
+            and entry.name not in _EXCLUDED_DIRS
+        )
+    except OSError as exc:
+        logger.warning("Failed to list workspace directory %s: %s", workspace, exc)
+        return "no projects found"
+    return ", ".join(projects) if projects else "no projects found"
+
 # Effort and cost defaults per task type
-ORCHESTRATOR_EFFORT = "low"
+EffortLevel = Literal["low", "medium", "high", "max"]
+
+ORCHESTRATOR_EFFORT: EffortLevel = "low"
 ORCHESTRATOR_MAX_BUDGET = 0.50  # Routing should be cheap (haiku)
-TASK_EFFORT = "high"  # Implementation tasks need full reasoning
+TASK_EFFORT: EffortLevel = "high"  # Implementation tasks need full reasoning
 TASK_MAX_BUDGET = 5.0  # Cap per individual task
-DEBUG_EFFORT = "max"  # Deep debugging gets maximum reasoning
+DEBUG_EFFORT: EffortLevel = "max"  # Deep debugging gets maximum reasoning
 DEBUG_MAX_BUDGET = 10.0  # Debugging can be expensive
 
 
@@ -99,7 +134,7 @@ class ClaudeSDKSession:
     def _build_options(
         self,
         task_id: str,
-        effort: str = "high",
+        effort: EffortLevel = "high",
         max_budget_usd: float | None = None,
         use_worktree: bool = True,
     ) -> ClaudeAgentOptions:
@@ -111,25 +146,25 @@ class ClaudeSDKSession:
             "PROJECT_ROOT": str(project_root),
         }
 
-        extra_args: dict[str, str | None] = {}
-        if effort:
-            extra_args["effort"] = effort
-        if max_budget_usd is not None:
-            extra_args["max-budget-usd"] = str(max_budget_usd)
-        if use_worktree:
-            extra_args["worktree"] = None  # Flag-only, no value
+        # Worktree is the only non-standard flag, kept in extra_args
+        extra_args: dict[str, str | None] = (
+            {"worktree": None} if use_worktree else {}
+        )
 
         hooks = build_hooks(self.usage_tracker, task_id)
 
         return ClaudeAgentOptions(
             model=self.model,
             permission_mode="bypassPermissions",
-            allowed_tools=["Task", "TodoWrite", "Read", "Glob", "Grep", "Bash"],
+            allowed_tools=["Agent", "TodoWrite", "Read", "Glob", "Grep", "Bash"],
             cwd=str(self.workspace),
             env=env_vars,
             max_turns=200,
+            effort=effort if effort else None,
+            max_budget_usd=max_budget_usd,
             extra_args=extra_args,
             hooks=hooks,
+            setting_sources=["project"],
         )
 
     async def execute_task(
@@ -137,7 +172,7 @@ class ClaudeSDKSession:
         task_id: str,
         prompt: str,
         progress_callback: Callable[[str, int], None] | None = None,
-        effort: str = "high",
+        effort: EffortLevel = "high",
         max_budget_usd: float | None = None,
         use_worktree: bool = True,
     ) -> tuple[bool, str, str | None]:
@@ -303,7 +338,7 @@ class ClaudeSDKPool:
         context: str | None = None,
         pid_callback: Callable[[int], None] | None = None,
         progress_callback: Callable[[str, int], None] | None = None,
-        effort: str = "high",
+        effort: EffortLevel = "high",
         max_budget_usd: float | None = None,
         use_worktree: bool = True,
     ) -> tuple[bool, str, str | None, str | None]:
@@ -465,7 +500,7 @@ def _build_orchestrator_prompt(
 USER CONTEXT:
 - Name: Matias Fuentes
 - You are their personal engineering assistant
-- Available projects: cloudmate, Latinamerica2026, permanent_residence, groovetherapy, mjfuentes.github.io, agentlab
+- Available projects: {_discover_projects()}
 - Use this project knowledge in conversations - reference their work and interests
 
 YOUR ROLE:
@@ -498,7 +533,7 @@ Examples:
 - User: "add feature X" -> `BACKGROUND_TASK|Add feature X|Adding feature X.`
 
 CRITICAL RULES:
-- NEVER use Task tool for coding work
+- NEVER use Agent tool for coding work
 - NEVER attempt Write/Edit/Bash commands yourself
 - ONLY use Read, Glob, Grep for analysis
 - ONLY return BACKGROUND_TASK format string for ANY coding/modifications
@@ -569,7 +604,9 @@ async def invoke_orchestrator_sdk(
         cwd=bot_repository,
         env=env_vars,
         max_turns=5,
-        extra_args={"effort": ORCHESTRATOR_EFFORT, "max-budget-usd": str(ORCHESTRATOR_MAX_BUDGET)},
+        effort=ORCHESTRATOR_EFFORT,
+        max_budget_usd=ORCHESTRATOR_MAX_BUDGET,
+        setting_sources=["project"],
     )
 
     try:

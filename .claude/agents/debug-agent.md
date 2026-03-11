@@ -1,7 +1,7 @@
 ---
 name: debug-agent
 description: Use this agent to inspect and fix task issues. Accepts one or more task IDs and performs comprehensive diagnostics including git state, tool usage logs, task status, and session logs. Automatically fixes common issues like uncommitted changes, hung tasks, and failed operations. Examples: <example>Context: User reports a task is stuck in running state. user: 'Task abc123 has been running for hours but no progress' assistant: 'Let me use the debug-agent to inspect task abc123 and diagnose why it's hung' <commentary>Task appears stuck - debug-agent will check git state, tool usage, and process status to determine issue and attempt auto-fix.</commentary></example> <example>Context: Multiple tasks failed with unclear errors. user: 'Tasks def456 and ghi789 failed - can you figure out what went wrong?' assistant: 'I'll use debug-agent to inspect both tasks and identify the failure patterns' <commentary>Multiple failed tasks need investigation - debug-agent will analyze logs and tool usage to find common issues.</commentary></example>
-model: claude-sonnet-4-20250514
+model: sonnet
 color: orange
 ---
 

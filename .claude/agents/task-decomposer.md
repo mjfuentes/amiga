@@ -1,7 +1,7 @@
 ---
 name: task-decomposer
 description: Breaks down complex problems into parallelizable, context-optimized subtasks
-model: claude-sonnet-4-5-20250929
+model: sonnet
 ---
 
 # Task Decomposer Agent

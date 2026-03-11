@@ -4,9 +4,11 @@
 
 ## Project Overview
 
-**AMIGA (Autonomous Modular Interactive Graphical Agent)** - Web-based chat interface with intelligent routing between Claude API (Haiku) for Q&A and Claude Code CLI (Sonnet) for coding tasks.
+**AMIGA (Autonomous Modular Interactive Graphical Agent)** - Web-based chat interface with intelligent routing between Claude API (Haiku) for Q&A and Claude Agent SDK (Sonnet/Opus) for coding tasks.
 
-**Core Philosophy**: Right model for the right task. Fast & cheap for questions, powerful & thorough for code.
+**Core Philosophy**: Right model for the right task. Fast & cheap for questions (effort=low, $0.50 cap), powerful & thorough for code (effort=high, $5.00 cap), maximum reasoning for debugging (effort=max, $10.00 cap).
+
+**SDK Integration**: Uses `claude_agent_sdk` directly — no subprocess `claude` spawning. Hooks (`claude/sdk_hooks.py`), agent loading (`claude/agent_loader.py`), effort/budget controls, and worktree isolation are all wired through `ClaudeSDKPool` / `ClaudeSDKSession` in `claude/sdk_client.py`.
 
 ## Quick Reference: Component Locations
 
@@ -19,7 +21,8 @@
 
 **Other Key Components**:
 - **Monitoring Dashboard**: `templates/dashboard.html` (SSE-based metrics UI)
-- **Claude Code Sessions**: `.claude/` (agent configs, hooks)
+- **Claude Code Sessions**: `.claude/` (agent configs in `.claude/agents/*.md`, hooks)
+- **SDK Modules**: `claude/sdk_client.py` (execution), `claude/sdk_hooks.py` (Python hook callbacks), `claude/agent_loader.py` (agent definition parser)
 - **Playwright MCP**: Browser automation for frontend testing (see Playwright MCP Integration section)
 
 ## Quick Reference: Database & Log Access
@@ -187,7 +190,8 @@ grep "task_id=abc123" logs/bot.log
 **WORKFLOW**: When debugging or starting a new task:
 1. Check `data/agentlab.db` (tasks table) for related active/failed tasks
 2. Check `logs/bot.log` for recent errors
-3. Get session UUID from database, then check session logs in `logs/sessions/<session_uuid>/`
+3. Get session UUID from database, then check tool_usage records: `SELECT * FROM tool_usage WHERE task_id = 'abc123'`
+   - SDK hooks write directly to SQLite — no JSONL session log files to parse
 4. Check `data/agentlab.db` (tool_usage table) for tool performance issues
 
 ## Repository Conventions
@@ -254,8 +258,11 @@ agentlab/
 │   ├── config.py        # Configuration management
 │   └── orchestrator.py  # Task orchestration
 ├── claude/              # Claude AI integration
+│   ├── sdk_client.py    # Claude Agent SDK (ClaudeSDKPool/Session - primary execution)
+│   ├── sdk_hooks.py     # Python SDK hook callbacks (PreToolUse/PostToolUse/Stop)
+│   ├── agent_loader.py  # Parse .claude/agents/*.md → AgentDefinition instances
 │   ├── api_client.py    # Claude API (Haiku - Q&A routing)
-│   └── code_cli.py      # Claude Code CLI sessions (Sonnet - coding)
+│   └── code_cli.py      # Legacy CLI subprocess wrapper (replaced by sdk_client.py)
 ├── monitoring/          # Dashboard & metrics
 │   ├── server.py        # Web dashboard (Flask + SSE)
 │   ├── metrics.py       # Real-time metrics from hooks
@@ -301,7 +308,7 @@ agentlab/
 │   │   ├── task-completion-validator.md     # Functional validation
 │   │   ├── ui-comprehensive-tester.md       # UI testing
 │   │   └── ultrathink-debugger.md           # Deep debugging (Opus 4.5)
-│   ├── hooks/           # Tool usage tracking (pre/post-tool-use, session-end)
+│   ├── hooks/           # Shell hook scripts (superseded by Python SDK callbacks in claude/sdk_hooks.py)
 │   └── settings.local.json  # Permissions, output style
 ├── data/                # Runtime state (sessions, tasks, costs)
 ├── logs/                # Application logs
@@ -325,7 +332,13 @@ agentlab/
 - **karen**: Reality check on project completion
 - **task-completion-validator**: Validates tasks actually work
 - **ui-comprehensive-tester**: Comprehensive UI testing with Playwright MCP
+- **debug-agent**: General debugging with Sonnet
 - **ultrathink-debugger**: Deep debugging (Opus 4.5 - expensive, use sparingly)
+
+#### Planning & Git Agents
+- **task-decomposer**: Breaks large tasks into subtasks with effort estimates
+- **git-worktree**: Manages git worktree creation and cleanup
+- **git-merge**: Handles git merges and conflict resolution
 
 #### Self-Improvement Agent
 - **self-improvement-agent**: Analyzes error patterns from database, updates agent prompts based on real failures, creates tasks for code fixes. Manually triggered to learn from mistakes.

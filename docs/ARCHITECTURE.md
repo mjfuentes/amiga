@@ -2,8 +2,8 @@
 
 > Comprehensive system architecture documentation for AMIGA (Autonomous Modular Interactive Graphical Agent)
 
-**Last Updated**: 2025-10-22
-**Version**: 1.0
+**Last Updated**: 2026-03-11
+**Version**: 2.0
 
 ---
 
@@ -28,24 +28,28 @@ AMIGA (Autonomous Modular Interactive Graphical Agent) is a Telegram bot that pr
 
 ### Design Philosophy
 
-**Right model for the right task**: Fast and cheap (Haiku 4.5) for questions, powerful and thorough (Sonnet 4.5) for code implementation.
+**Right model for the right task**: Fast and cheap (Haiku) for routing, powerful (Sonnet) for implementation, maximum reasoning (Opus) for deep debugging. Each tier has explicit effort and budget caps.
 
 **Key Architectural Decisions**:
 
 1. **Async-First Design**: All I/O operations use asyncio for non-blocking concurrency
 2. **Manager Pattern**: Encapsulated resource management (tasks, sessions, agents, worktrees)
-3. **SQLite Backend**: Centralized database for tasks, tool usage, and user sessions
-4. **Hook-Based Observability**: Bash hooks track tool usage for real-time metrics
+3. **SQLite Backend**: Centralized database for tasks, tool usage, user sessions, and auth tokens
+4. **SDK Hook Callbacks**: Python SDK hooks (`claude/sdk_hooks.py`) replace shell script hooks for tool observability and git safety enforcement
 5. **Priority Queue System**: Background task execution with priority levels (URGENT, HIGH, NORMAL, LOW)
-6. **Per-User Isolation**: Independent message queues, sessions, and cost tracking per Telegram user
+6. **Per-User Isolation**: Independent message queues, sessions, and cost tracking per user
+7. **Native SDK Worktrees**: Task isolation via SDK `--worktree` flag; no manual worktree management
+8. **Markdown Agent Definitions**: Agents defined in `.claude/agents/*.md` with YAML frontmatter, loaded at runtime by `claude/agent_loader.py`
 
 ### Technology Stack
 
-- **Python 3.13**: Core application language with asyncio
-- **Claude API (Haiku 4.0)**: Fast Q&A and routing decisions
-- **Claude Code CLI (Sonnet 4.5)**: Coding task execution with full tool access
+- **Python 3.12+**: Core application language with asyncio
+- **Claude Agent SDK (`claude_agent_sdk`)**: Primary integration layer — `query()`, `ClaudeAgentOptions`, hooks, agent definitions
+- **Claude API (Haiku)**: Fast Q&A and routing decisions via orchestrator (effort=low, max $0.50)
+- **Claude Sonnet**: Implementation tasks (effort=high, max $5.00)
+- **Claude Opus**: Deep debugging via ultrathink-debugger (effort=max, max $10.00)
 - **python-telegram-bot**: Telegram Bot API integration
-- **SQLite**: Persistent storage (tasks, tool usage, sessions)
+- **SQLite**: Persistent storage (tasks, tool usage, sessions, auth tokens)
 - **Flask + SSE**: Real-time monitoring dashboard
 - **WebSockets (SocketIO)**: Web chat interface
 - **Whisper**: Voice message transcription
@@ -74,16 +78,16 @@ graph TB
 
     subgraph "Task Execution Layer"
         POOL[AgentPool<br/>Priority Queue<br/>3 Concurrent Workers]
-        SESS_POOL[ClaudeSessionPool<br/>Session Management<br/>Tool Usage Tracking]
-        CLAUDE_CLI[claude_interactive.py<br/>Claude Code CLI<br/>Sonnet 4.5]
+        SDK_POOL[ClaudeSDKPool<br/>sdk_client.py<br/>Semaphore-based concurrency]
+        SDK_SESSION[ClaudeSDKSession<br/>claude_agent_sdk.query()<br/>Effort + Budget Controls]
     end
 
     subgraph "Agent System"
-        ORCH[orchestrator<br/>Task Coordinator]
-        CODE[code_agent<br/>Backend Implementation]
+        ORCH[orchestrator<br/>Task Coordinator<br/>effort=low]
+        CODE[code_agent<br/>Backend Implementation<br/>effort=high]
         FRONT[frontend_agent<br/>UI/UX Development]
-        RESEARCH[research_agent<br/>Analysis & Research<br/>Opus 4.5]
-        DEBUG[ultrathink-debugger<br/>Deep Debugging<br/>Opus 4.5]
+        RESEARCH[research_agent<br/>Analysis & Research<br/>Opus]
+        DEBUG[ultrathink-debugger<br/>Deep Debugging<br/>effort=max]
         QA[Quality Agents<br/>Jenny, Validators, etc.]
     end
 
@@ -94,7 +98,7 @@ graph TB
     end
 
     subgraph "Observability"
-        HOOKS[Hook System<br/>pre/post-tool-use]
+        HOOKS[SDK Hooks<br/>sdk_hooks.py<br/>PreToolUse / PostToolUse / Stop]
         METRICS[MetricsAggregator<br/>Real-Time Metrics]
         DASHBOARD[Web Dashboard<br/>SSE Updates]
     end
@@ -111,21 +115,21 @@ graph TB
     CLAUDE_API -->|Background Task| POOL
     CLAUDE_API --> MAIN
 
-    POOL --> SESS_POOL
-    SESS_POOL --> CLAUDE_CLI
-    CLAUDE_CLI --> ORCH
+    POOL --> SDK_POOL
+    SDK_POOL --> SDK_SESSION
+    SDK_SESSION --> ORCH
     ORCH --> CODE
     ORCH --> FRONT
     ORCH --> RESEARCH
     ORCH --> DEBUG
     ORCH --> QA
 
-    CLAUDE_CLI --> HOOKS
+    SDK_SESSION --> HOOKS
     HOOKS --> SESSION_LOGS
     HOOKS --> METRICS
     METRICS --> DASHBOARD
 
-    SESS_POOL --> DB
+    SDK_POOL --> DB
     POOL --> DB
     MAIN --> DB
 
@@ -224,11 +228,12 @@ sequenceDiagram
     participant User
     participant Router
     participant AgentPool
-    participant SessionPool
-    participant ClaudeCLI
+    participant SDKPool
+    participant SDKSession
+    participant SDK as claude_agent_sdk
     participant Agent
     participant Database
-    participant Hooks
+    participant Hooks as SDK Hooks (Python)
 
     User->>Router: Coding Task Request
     Router->>AgentPool: submit(task_func, priority=HIGH)
@@ -236,31 +241,35 @@ sequenceDiagram
 
     Note over AgentPool: Worker picks task from queue
 
-    AgentPool->>SessionPool: Execute task
-    SessionPool->>SessionPool: Acquire session (max 3)
-    SessionPool->>Database: Create/Update task record
-    Database-->>SessionPool: task_id, session_uuid
+    AgentPool->>SDKPool: execute_task(task_id, description, workspace, effort, budget)
+    SDKPool->>SDKPool: Acquire semaphore (max 3)
+    SDKPool->>SDKSession: Create ClaudeSDKSession
 
-    SessionPool->>ClaudeCLI: Start Claude Code CLI
-    ClaudeCLI->>Agent: Route to specialized agent
+    SDKSession->>SDKSession: _build_options(effort="high", worktree=True, hooks=...)
+    SDKSession->>SDK: query(prompt, options)
+    SDK->>SDK: Create git worktree (--worktree flag)
+    SDK->>Agent: Route to orchestrator agent
 
     loop Tool Execution
-        Agent->>Hooks: pre-tool-use hook
-        Hooks->>Database: Log tool invocation
+        Agent->>Hooks: PreToolUse callback
+        Hooks->>Hooks: Check blocked git patterns
+        Hooks->>Database: record_tool_start(task_id, tool_name)
         Agent->>Agent: Execute tool (Read/Write/Edit/Bash)
-        Agent->>Hooks: post-tool-use hook
-        Hooks->>Database: Log tool result/error
+        Agent->>Hooks: PostToolUse callback
+        Hooks->>Database: record_tool_complete(task_id, tool_name, duration)
     end
 
-    Agent->>ClaudeCLI: Task complete
-    ClaudeCLI->>SessionPool: Return result
-    SessionPool->>Database: Update task (status=completed)
-    SessionPool->>SessionPool: Release session
+    Agent->>SDK: Task complete
+    SDK->>Hooks: Stop callback
+    Hooks->>Database: record_status_change(task_id, "session_ended")
+    SDK->>SDKSession: ResultMessage(result, duration_ms, cost)
+    SDKSession->>Database: Update task (status=completed)
+    SDKPool->>SDKPool: Release semaphore
     AgentPool->>User: Notify completion
 
     alt Task Failed
-        Agent->>SessionPool: Return error
-        SessionPool->>Database: Update task (status=failed, error)
+        SDK->>SDKSession: ResultMessage(is_error=True)
+        SDKSession->>Database: Update task (status=failed, error)
         AgentPool->>User: Notify failure
     end
 ```
@@ -291,7 +300,8 @@ graph LR
         TASK_MGR[TaskManager]
         SESS_MGR[SessionManager]
         TOOL_TRACK[ToolUsageTracker]
-        HOOKS[Hook Scripts]
+        HOOKS[SDK Hooks<br/>sdk_hooks.py]
+        AUTH[AuthMiddleware<br/>auth/middleware.py]
         MON[monitoring_server.py]
     end
 
@@ -304,6 +314,7 @@ graph LR
         TOOL_TABLE[(tool_usage table)]
         SESS_TABLE[(sessions table)]
         USERS_TABLE[(users table)]
+        AUTH_TABLE[(auth_sessions table)]
     end
 
     MAIN --> TASK_MGR
@@ -313,12 +324,14 @@ graph LR
     SESS_MGR --> DB
     TOOL_TRACK --> DB
     HOOKS --> TOOL_TRACK
+    AUTH --> DB
     MON --> DB
 
     DB --> TASKS_TABLE
     DB --> TOOL_TABLE
     DB --> SESS_TABLE
     DB --> USERS_TABLE
+    DB --> AUTH_TABLE
 
     style DB fill:#e3f2fd
     style TASKS_TABLE fill:#fff9c4
@@ -387,7 +400,7 @@ All database access goes through manager classes that encapsulate resource lifec
 - **TaskManager**: CRUD operations for tasks, status updates, task lifecycle
 - **SessionManager**: Conversation history, token tracking, cleanup
 - **ToolUsageTracker**: Tool invocation logging, error categorization
-- **WorktreeManager**: Git worktree creation/cleanup for task isolation (deprecated, see git-worktree agent)
+- **WorktreeManager**: Git worktree creation/cleanup for task isolation (deprecated — SDK handles this natively via `--worktree` flag)
 
 Benefits:
 - Single responsibility (managers handle their domain)
@@ -401,21 +414,15 @@ Benefits:
 
 ```mermaid
 flowchart LR
-    subgraph "Claude Code CLI"
+    subgraph "Claude Agent SDK"
         AGENT[Agent Execution]
         TOOL_CALL[Tool Invocation<br/>Read/Write/Edit/Bash]
     end
 
-    subgraph "Hook Scripts"
-        PRE_HOOK[pre-tool-use.sh<br/>Log params before]
-        POST_HOOK[post-tool-use.sh<br/>Log results after]
-        SESSION_END[session-end.sh<br/>Aggregate summary]
-    end
-
-    subgraph "Log Files"
-        PRE_LOG[pre_tool_use.jsonl<br/>Per-session logs]
-        POST_LOG[post_tool_use.jsonl<br/>Per-session logs]
-        SUMMARY[summary.json<br/>Session summary]
+    subgraph "Python SDK Hooks (sdk_hooks.py)"
+        PRE_HOOK[PreToolUse callback<br/>Block dangerous git ops<br/>Record tool start]
+        POST_HOOK[PostToolUse callback<br/>Record tool completion]
+        STOP_HOOK[Stop callback<br/>Mark session end]
     end
 
     subgraph "Database"
@@ -423,62 +430,96 @@ flowchart LR
     end
 
     subgraph "Monitoring"
-        HOOKS_READER[HooksReader<br/>Parse JSONL logs]
         METRICS[MetricsAggregator<br/>Real-time metrics]
         DASHBOARD[Web Dashboard<br/>SSE updates]
     end
 
     AGENT --> TOOL_CALL
     TOOL_CALL --> PRE_HOOK
-    PRE_HOOK --> PRE_LOG
     PRE_HOOK --> TOOL_DB
 
     TOOL_CALL --> POST_HOOK
-    POST_HOOK --> POST_LOG
     POST_HOOK --> TOOL_DB
 
-    AGENT --> SESSION_END
-    SESSION_END --> SUMMARY
-
-    PRE_LOG --> HOOKS_READER
-    POST_LOG --> HOOKS_READER
-    SUMMARY --> HOOKS_READER
+    AGENT --> STOP_HOOK
+    STOP_HOOK --> TOOL_DB
 
     TOOL_DB --> METRICS
-    HOOKS_READER --> METRICS
     METRICS --> DASHBOARD
 
     style PRE_HOOK fill:#e8f5e9
     style POST_HOOK fill:#e8f5e9
-    style SESSION_END fill:#e8f5e9
+    style STOP_HOOK fill:#e8f5e9
 ```
 
 ### Hook System Design
 
-**Location**: `~/.claude/hooks/` (global) or `.claude/hooks/` (project-specific)
+**Module**: `claude/sdk_hooks.py`
 
-**Hook Scripts**:
-1. **pre-tool-use.sh**: Logs tool name, parameters, timestamp before execution
-2. **post-tool-use.sh**: Logs results, errors, duration, token usage after execution
-3. **session-end.sh**: Aggregates session summary with totals
+**Hook Callbacks** (Python async functions, registered via `HookMatcher`):
+1. **PreToolUse** (`create_pre_tool_hook`): Records tool start in `ToolUsageTracker`. For `Bash` tool, checks command against `BLOCKED_GIT_PATTERNS` and returns `decision="block"` if matched.
+2. **PostToolUse** (`create_post_tool_hook`): Records tool completion with duration info.
+3. **Stop** (`create_stop_hook`): Logs session end via `ToolUsageTracker.record_status_change`.
+
+**Blocked Git Patterns** (enforced in PreToolUse on Bash commands):
+- `--no-verify` — pre-commit hooks must not be skipped
+- `push --force` / `push -f` — force push is not allowed
+- `reset --hard` — hard reset requires confirmation
+
+**Registration**:
+```python
+from claude.sdk_hooks import build_hooks
+
+hooks = build_hooks(tracker, task_id)
+# Returns dict ready for ClaudeAgentOptions(hooks=hooks)
+```
 
 **Data Flow**:
-1. Claude Code CLI invokes hooks automatically
-2. Hooks write to JSONL logs (append-only, one JSON per line)
-3. Hooks write to database (via ToolUsageTracker) for persistent storage
-4. HooksReader parses JSONL logs for real-time metrics
-5. MetricsAggregator combines database + logs for dashboard
-6. Dashboard uses SSE to push updates to web UI
+1. SDK calls Python hook callbacks in-process (no shell subprocess)
+2. `PreToolUse` optionally blocks the tool call before execution
+3. `PostToolUse` writes directly to SQLite via `ToolUsageTracker`
+4. `MetricsAggregator` reads database for dashboard
+5. Dashboard uses SSE to push updates to web UI
 
 **Resilience**:
-- Hooks use `set +e` to continue on errors
-- JSON parsing in Python (inline in bash)
-- Append-only logs (no corruption on concurrent writes)
-- Database writes are optional (logs are primary)
+- Hook callbacks return `SyncHookJSONOutput()` on success or error (never raise)
+- `tracker` parameter is optional — hooks are no-ops when `None`
+- Database writes are fire-and-forget (logged on failure)
 
 ---
 
 ## Component Reference
+
+### Claude SDK Modules (`claude/`)
+
+**sdk_client.py** — Primary execution layer
+- `ClaudeSDKSession`: Wraps `query()` with effort/budget/worktree/hook wiring. Handles `ResultMessage`, `AssistantMessage`, `SystemMessage`.
+- `ClaudeSDKPool`: Semaphore-based pool for up to 3 concurrent `ClaudeSDKSession`s. Replaces `ClaudeSessionPool`.
+- `invoke_orchestrator_sdk()`: Lightweight orchestrator invocation (effort=low, model=haiku, max_turns=5).
+- Cost constants: `ORCHESTRATOR_EFFORT="low"` ($0.50 cap), `TASK_EFFORT="high"` ($5.00 cap), `DEBUG_EFFORT="max"` ($10.00 cap).
+
+**sdk_hooks.py** — In-process hook callbacks
+- `build_hooks(tracker, task_id)`: Returns `dict[str, list[HookMatcher]]` for `ClaudeAgentOptions(hooks=...)`.
+- `BLOCKED_GIT_PATTERNS`: Tuple of `(pattern, reason)` pairs checked in Bash PreToolUse.
+- `create_pre_tool_hook` / `create_post_tool_hook` / `create_stop_hook`: Individual hook factories.
+
+**agent_loader.py** — Agent definition loader
+- `load_project_agents(project_root)`: Discovers `.claude/agents/*.md`, returns `dict[str, AgentDefinition]`.
+- `parse_agent_file(file_path)`: Parses single file. Returns `(name, AgentDefinition)` or `None`.
+- Frontmatter: regex-based YAML parser (no `pyyaml` dependency). Skips `CHANGELOG.md`.
+
+### Auth Modules (`auth/`)
+
+**middleware.py** — JWT token management
+- `AuthMiddleware.generate_tokens()`: Returns `(access_token, refresh_token, session_id)` 3-tuple.
+- `verify_access_token()`: Validates JWT and checks session validity in SQLite.
+- `refresh_access_token()`: Issues new access token from a valid refresh token.
+- `logout_session()`: Invalidates session in database.
+
+**session_manager.py** — Auth session lifecycle
+- Stores sessions in SQLite with expiration and inactivity timeout.
+- Activity tracking: last-seen timestamp updated on each verified request.
+- `AuthSessionManager` initialized from `core.config.DATABASE_PATH_STR`.
 
 ### Entry Points
 
@@ -495,7 +536,7 @@ flowchart LR
 - SSE (Server-Sent Events) for real-time updates
 - WebSocket support for web chat interface
 - REST API for metrics and task data
-- User authentication (JWT tokens)
+- User authentication: session-backed JWT tokens (access + refresh) via `auth/middleware.py`
 
 ### Core Modules
 
@@ -519,20 +560,35 @@ See `docs/API.md` for detailed API documentation of manager classes:
 - **TaskManager**: Task CRUD, status tracking, lifecycle management
 - **SessionManager**: Conversation history, token limits, cleanup
 - **AgentPool**: Priority queue, worker pool, task submission
-- **ClaudeSessionPool**: Session acquisition, tool usage tracking
+- **ClaudeSDKPool** (`claude/sdk_client.py`): Semaphore-based pool for concurrent SDK sessions; replaces `ClaudeSessionPool`
+- **ClaudeSDKSession** (`claude/sdk_client.py`): Wraps `claude_agent_sdk.query()` with effort/budget options, worktree flag, and hook wiring
 - **MessageQueueManager**: Per-user message serialization
-- **WorktreeManager**: Git worktree isolation (deprecated)
+- **WorktreeManager**: Git worktree isolation (deprecated — SDK now handles worktrees natively via `--worktree` flag)
 - **GameManager**: Interactive game state management
 
 ### Agent System
 
 **Location**: `.claude/agents/`
 
+**Loading**: `claude/agent_loader.py` — `load_project_agents()` globs `*.md` files, parses YAML frontmatter, and returns `dict[str, AgentDefinition]` for passing to `ClaudeAgentOptions(agents=...)`.
+
+**Frontmatter Schema** (required: `name`, `description`; optional: `tools`, `model`):
+```yaml
+---
+name: code_agent
+description: Backend Python implementation agent
+tools: Read, Edit, Write, Bash, Glob, Grep
+model: sonnet
+---
+
+[Markdown body becomes the system prompt]
+```
+
 **Core Agents**:
-- **orchestrator.md**: Task coordinator, delegates to specialized agents
-- **code_agent.md**: Backend implementation (Python, Sonnet 4.5)
-- **frontend_agent.md**: UI/UX development (HTML/CSS/JS, Sonnet 4.5)
-- **research_agent.md**: Analysis, proposals, research (Opus 4.5)
+- **orchestrator.md**: Task coordinator, delegates to specialized agents (effort=low)
+- **code_agent.md**: Backend implementation (Python, effort=high)
+- **frontend_agent.md**: UI/UX development (HTML/CSS/JS)
+- **research_agent.md**: Analysis, proposals, research (Opus)
 
 **Quality Assurance Agents**:
 - **Jenny.md**: Spec verification
@@ -541,27 +597,41 @@ See `docs/API.md` for detailed API documentation of manager classes:
 - **karen.md**: Reality checks
 - **task-completion-validator.md**: Functional validation
 - **ui-comprehensive-tester.md**: UI testing
-- **ultrathink-debugger.md**: Deep debugging (Opus 4.5)
+- **debug-agent.md**: General debugging (Sonnet)
+- **ultrathink-debugger.md**: Deep debugging (Opus, effort=max)
+
+**Planning & Git Agents**:
+- **task-decomposer.md**: Breaks large tasks into subtasks with effort estimates
+- **git-worktree.md**: Git worktree creation and cleanup
+- **git-merge.md**: Git merge and conflict resolution
+
+**Autonomous Agents**:
+- **self-improvement-agent.md**: Analyzes SQLite error patterns; updates agent prompts and creates fix tasks autonomously
 
 **Agent Configuration**:
-- Model selection (Sonnet/Opus)
-- Custom instructions and context
-- Tool permissions
-- Workflow enforcement
+- Model selection via `model:` frontmatter field (`sonnet`, `opus`, `haiku`, `inherit`)
+- Tool permissions via `tools:` (comma-separated list)
+- System prompt is the markdown body after the closing `---`
+- Files without valid `name` + `description` frontmatter are skipped with a warning
 
 ### Testing Infrastructure
 
-**Location**: `telegram_bot/tests/`
+**Location**: `tests/`
 
 **Test Structure**:
 - `conftest.py`: pytest fixtures and configuration
-- `test_*.py`: Unit and integration tests
+- `tests/unit/test_*.py`: Unit tests (57 modules total)
 - Coverage reporting via pytest-cov
+
+**Key Test Modules (recent)**:
+- `tests/unit/test_sdk_client.py` — `ClaudeSDKSession`, `ClaudeSDKPool`, `invoke_orchestrator_sdk` (43 tests)
+- `tests/unit/test_agent_loader.py` — frontmatter parsing, edge cases, model mapping (41 tests)
+- `tests/unit/test_sdk_hooks.py` — git safety patterns, hook callbacks, build_hooks (34 tests)
 
 **Running Tests**:
 ```bash
-pytest telegram_bot/tests/ -v
-pytest telegram_bot/tests/ --cov=telegram_bot
+pytest tests/ -v
+pytest tests/ --cov=.
 ```
 
 **Coverage Targets**:
@@ -615,22 +685,22 @@ pytest telegram_bot/tests/ --cov=telegram_bot
 
 **Scenario**: AgentPool worker processes "Fix login bug" task
 
-1. **Session Acquisition** (claude_interactive.py):
-   - ClaudeSessionPool acquires session (max 3 concurrent)
-   - Update task status to "running" in database
-   - Record session_uuid for log correlation
+1. **Session Acquisition** (`claude/sdk_client.py` — `ClaudeSDKPool`):
+   - Semaphore limits concurrency to 3 simultaneous tasks
+   - Creates a `ClaudeSDKSession` for this task
+   - Records workflow assignment (`orchestrator`) in `ToolUsageTracker`
 
-2. **Worktree Creation** (DEPRECATED: via git-worktree agent):
-   - Create isolated git worktree: `/tmp/agentlab-worktrees/task-<id>`
-   - Checkout task branch: `task/<task_id>`
-   - Stash uncommitted changes if needed
-   - Prevents cross-task interference
+2. **Options Building** (`ClaudeSDKSession._build_options`):
+   - Resolves project root (follows `.git` file pointer for worktrees)
+   - Sets `effort="high"` and `max_budget_usd=5.0` for task execution
+   - Passes `--worktree` flag → SDK automatically creates and manages an isolated git worktree
+   - Wires Python SDK hooks via `build_hooks(tracker, task_id)`
+   - Sets `TASK_ID` and `PROJECT_ROOT` in env
 
-3. **Claude Code CLI Execution**:
-   - Start subprocess: `claude --agent orchestrator --prompt "Fix login bug"`
-   - Pass task context (description, workspace, constraints)
-   - Sanitize prompt content (remove injection patterns)
-   - Stream output for real-time monitoring
+3. **SDK Query Execution** (`claude_agent_sdk.query()`):
+   - Streams messages: `SystemMessage` (init), `AssistantMessage` (turns), `ResultMessage` (final)
+   - Logs tool calls from `AssistantMessage` blocks for progress tracking
+   - Cancellable via `asyncio.Event` signal
 
 4. **Agent Orchestration** (orchestrator):
    - Analyze task requirements
@@ -644,48 +714,45 @@ pytest telegram_bot/tests/ --cov=telegram_bot
    - Run tests: `Bash(command="pytest tests/test_auth.py")`
    - Commit: `Bash(command="git add . && git commit -m '...'")`
 
-6. **Hook Logging** (pre/post-tool-use hooks):
-   - Before each tool: log tool_name, parameters, timestamp to pre_tool_use.jsonl
-   - After each tool: log result, error, duration, tokens to post_tool_use.jsonl
-   - Write to database: tool_usage table with task_id correlation
-   - MetricsAggregator reads logs for real-time dashboard updates
+6. **Hook Callbacks** (Python SDK hooks — `claude/sdk_hooks.py`):
+   - `PreToolUse`: records tool start; blocks dangerous Bash git commands in-process
+   - `PostToolUse`: records tool completion with duration to SQLite via `ToolUsageTracker`
+   - `Stop`: marks session end in tracker
+   - MetricsAggregator reads database for real-time dashboard updates
 
 7. **Task Completion**:
-   - Agent returns summary: "Fixed authentication bug in auth.py:42. Added validation for empty passwords. Tests passing."
-   - Update task record: status=completed, result=summary
-   - Release session for next task
-   - Notify user via Telegram
+   - `ResultMessage` delivers final result text, duration, cost, turn count
+   - Update task record: status=completed, result=summary, session_uuid
+   - Semaphore released for next task
+   - Notify user via Telegram/web chat
 
-8. **Worktree Cleanup** (DEPRECATED: manual via git-worktree agent):
-   - Merge task branch to main (if successful)
-   - Delete worktree: `/tmp/agentlab-worktrees/task-<id>`
-   - Clean up branch: `git branch -d task/<task_id>`
+8. **Worktree Management** (handled by SDK natively):
+   - SDK creates worktree before execution (`use_worktree=True`)
+   - SDK cleans up worktree after completion
+   - No manual worktree agent invocation needed
 
 ### Tool Usage Tracking
 
 **Scenario**: Agent executes Read tool and encounters error
 
-1. **Pre-Tool Hook**:
-   - Claude Code CLI invokes pre-tool-use.sh
-   - Extract parameters: `{"tool": "Read", "file_path": "/missing/file.py"}`
-   - Write to pre_tool_use.jsonl: `{"timestamp": "...", "tool": "Read", "params": {...}}`
-   - Record in database: `tool_usage(task_id, tool_name, timestamp, parameters)`
+1. **PreToolUse Hook** (`sdk_hooks.py` — `create_pre_tool_hook`):
+   - SDK calls Python callback in-process before tool execution
+   - Extract: `tool_name="Read"`, `tool_input={"file_path": "/missing/file.py"}`
+   - Call `tracker.record_tool_start(task_id, "Read", params)`
+   - For Bash tool: check command against `BLOCKED_GIT_PATTERNS`; block if matched
+   - Return `SyncHookJSONOutput()` to allow execution
 
 2. **Tool Execution**:
-   - Claude Code CLI attempts to read file
-   - File not found, raises error
+   - SDK attempts to read file
+   - File not found, SDK records error internally
 
-3. **Post-Tool Hook**:
-   - Claude Code CLI invokes post-tool-use.sh
-   - Extract error: `{"error": "File not found", "success": false}`
-   - Calculate duration: 15ms
-   - Extract token usage: `{"input": 120, "output": 50}`
-   - Write to post_tool_use.jsonl: `{"timestamp": "...", "tool": "Read", "error": "...", "duration": 15, "tokens": {...}}`
-   - Update database: `tool_usage(success=false, error="File not found", duration_ms=15, ...)`
+3. **PostToolUse Hook** (`sdk_hooks.py` — `create_post_tool_hook`):
+   - SDK calls Python callback in-process after tool execution
+   - Call `tracker.record_tool_complete(task_id, "Read", duration_ms=0.0, success=True, params)`
+   - Write directly to SQLite `tool_usage` table
 
 4. **Metrics Aggregation**:
-   - HooksReader parses JSONL logs (real-time)
-   - MetricsAggregator combines database + logs
+   - `MetricsAggregator` reads directly from SQLite (no JSONL log parsing needed)
    - Calculate metrics: total tools, errors, duration, token usage
    - Push to dashboard via SSE
 
@@ -699,24 +766,24 @@ pytest telegram_bot/tests/ --cov=telegram_bot
 
 **Problem**: How to correlate tool usage logs with tasks in the database?
 
-**Solution**: session_uuid as correlation key
+**Solution**: session_uuid as correlation key, supplied by the SDK's `ResultMessage`
 
 1. **Task Creation** (tasks.py):
-   - Generate session_uuid: `uuid.uuid4().hex`
-   - Store in database: `tasks(task_id, session_uuid, ...)`
+   - Generate task_id; session_uuid starts as `None`
+   - Store in database: `tasks(task_id, session_uuid=None, ...)`
 
-2. **Session Directory** (claude_interactive.py):
-   - Create session log directory: `logs/sessions/<session_uuid>/`
-   - Pass to Claude Code CLI: `--session-dir logs/sessions/<session_uuid>`
+2. **SDK Execution** (sdk_client.py):
+   - `query()` streams messages; `SystemMessage(subtype="init")` provides early session ID if needed
+   - `ResultMessage.session_id` delivers the final SDK session identifier
 
-3. **Hook Logging**:
-   - Hooks write to session directory: `logs/sessions/<session_uuid>/pre_tool_use.jsonl`
-   - Hooks also write to database with task_id
+3. **Session UUID Update**:
+   - On `ResultMessage`, `ClaudeSDKSession._record_completion()` calls `db.update_task(task_id, session_uuid=session_id)`
+   - Links SDK session to the task record in SQLite
 
 4. **Log Retrieval**:
-   - Query database for task: `SELECT session_uuid FROM tasks WHERE task_id = 'abc123'`
-   - Read session logs: `logs/sessions/<session_uuid>/pre_tool_use.jsonl`
-   - Correlate with database records for complete view
+   - Query database: `SELECT session_uuid FROM tasks WHERE task_id = 'abc123'`
+   - Use session_uuid to correlate with tool_usage records: `SELECT * FROM tool_usage WHERE task_id = 'abc123'`
+   - No separate JSONL log files — all data written directly to SQLite by SDK hooks
 
 ---
 

@@ -17,9 +17,13 @@ from typing import Any
 from claude_agent_sdk import (
     HookContext,
     HookMatcher,
+    NotificationHookInput,
+    PostToolUseFailureHookInput,
     PostToolUseHookInput,
     PreToolUseHookInput,
     StopHookInput,
+    SubagentStartHookInput,
+    SubagentStopHookInput,
 )
 from claude_agent_sdk.types import SyncHookJSONOutput
 
@@ -37,7 +41,15 @@ BLOCKED_GIT_PATTERNS: tuple[tuple[str, str], ...] = (
 )
 
 
-HookInput = PreToolUseHookInput | PostToolUseHookInput | StopHookInput
+HookInput = (
+    PreToolUseHookInput
+    | PostToolUseHookInput
+    | PostToolUseFailureHookInput
+    | StopHookInput
+    | SubagentStartHookInput
+    | SubagentStopHookInput
+    | NotificationHookInput
+)
 HookCallbackType = Callable[
     [HookInput, str | None, HookContext],
     Awaitable[SyncHookJSONOutput],
@@ -206,6 +218,191 @@ def create_stop_hook(
     return stop_callback
 
 
+def create_subagent_start_hook(
+    tracker: ToolUsageTracker | None,
+    task_id: str,
+) -> HookCallbackType:
+    """Create a SubagentStart hook callback.
+
+    Logs when a subagent is spawned.
+    All tracker calls are wrapped in try/except so they never crash
+    the hook callback.
+    """
+
+    async def subagent_start_callback(
+        hook_input: HookInput,
+        tool_use_id: str | None,
+        context: HookContext,
+    ) -> SyncHookJSONOutput:
+        try:
+            agent_type = _safe_get(hook_input, "agent_type", "unknown")
+            agent_id = _safe_get(hook_input, "agent_id", "unknown")
+
+            logger.info(f"Task {task_id}: SubagentStart type={agent_type} id={agent_id}")
+
+            if tracker:
+                try:
+                    tracker.record_tool_start(
+                        task_id,
+                        f"SubagentStart:{agent_type}",
+                        {"agent_type": agent_type, "agent_id": agent_id},
+                    )
+                except Exception as tracker_err:
+                    logger.warning(
+                        f"Task {task_id}: Failed to record subagent start: {tracker_err}"
+                    )
+
+            return {}
+        except Exception as exc:
+            logger.error(f"Task {task_id}: SubagentStart hook error: {exc}")
+            return {}
+
+    return subagent_start_callback
+
+
+def create_subagent_stop_hook(
+    tracker: ToolUsageTracker | None,
+    task_id: str,
+) -> HookCallbackType:
+    """Create a SubagentStop hook callback.
+
+    Logs when a subagent completes.
+    All tracker calls are wrapped in try/except so they never crash
+    the hook callback.
+    """
+
+    async def subagent_stop_callback(
+        hook_input: HookInput,
+        tool_use_id: str | None,
+        context: HookContext,
+    ) -> SyncHookJSONOutput:
+        try:
+            agent_type = _safe_get(hook_input, "agent_type", "unknown")
+            agent_id = _safe_get(hook_input, "agent_id", "unknown")
+            last_assistant_message = _safe_get(hook_input, "last_assistant_message", "")
+            error = _safe_get(hook_input, "error", "")
+            success = not bool(error)
+
+            logger.info(f"Task {task_id}: SubagentStop type={agent_type} id={agent_id}")
+
+            if tracker:
+                try:
+                    tracker.record_tool_complete(
+                        task_id=task_id,
+                        tool_name=f"SubagentStop:{agent_type}",
+                        duration_ms=0.0,
+                        success=success,
+                        error=error if error else None,
+                        parameters={
+                            "agent_type": agent_type,
+                            "agent_id": agent_id,
+                            "last_assistant_message": str(last_assistant_message)[:500],
+                        },
+                    )
+                except Exception as tracker_err:
+                    logger.warning(
+                        f"Task {task_id}: Failed to record subagent stop: {tracker_err}"
+                    )
+
+            return {}
+        except Exception as exc:
+            logger.error(f"Task {task_id}: SubagentStop hook error: {exc}")
+            return {}
+
+    return subagent_stop_callback
+
+
+def create_post_tool_failure_hook(
+    tracker: ToolUsageTracker | None,
+    task_id: str,
+) -> HookCallbackType:
+    """Create a PostToolUseFailure hook callback.
+
+    Tracks tool failures separately with success=False.
+    All tracker calls are wrapped in try/except so they never crash
+    the hook callback.
+    """
+
+    async def post_tool_failure_callback(
+        hook_input: HookInput,
+        tool_use_id: str | None,
+        context: HookContext,
+    ) -> SyncHookJSONOutput:
+        try:
+            tool_name = _safe_get(hook_input, "tool_name", "unknown")
+            tool_input = _safe_get(hook_input, "tool_input", {})
+            error = _safe_get(hook_input, "error", "unknown error")
+
+            logger.error(f"Task {task_id}: Tool failure {tool_name}: {error}")
+
+            if tracker:
+                try:
+                    params = dict(tool_input) if tool_input else {}
+                    tracker.record_tool_complete(
+                        task_id=task_id,
+                        tool_name=tool_name,
+                        duration_ms=0.0,
+                        success=False,
+                        error=str(error),
+                        parameters=params,
+                    )
+                except Exception as tracker_err:
+                    logger.warning(
+                        f"Task {task_id}: Failed to record tool failure: {tracker_err}"
+                    )
+
+            return {}
+        except Exception as exc:
+            logger.error(f"Task {task_id}: PostToolUseFailure hook error: {exc}")
+            return {}
+
+    return post_tool_failure_callback
+
+
+def create_notification_hook(
+    tracker: ToolUsageTracker | None,
+    task_id: str,
+) -> HookCallbackType:
+    """Create a Notification hook callback.
+
+    Forwards agent status updates to the log.
+    All tracker calls are wrapped in try/except so they never crash
+    the hook callback.
+    """
+
+    async def notification_callback(
+        hook_input: HookInput,
+        tool_use_id: str | None,
+        context: HookContext,
+    ) -> SyncHookJSONOutput:
+        try:
+            message = _safe_get(hook_input, "message", "")
+            notification_type = _safe_get(hook_input, "notification_type", "unknown")
+
+            logger.info(f"Task {task_id}: Notification [{notification_type}]: {message}")
+
+            if tracker:
+                try:
+                    tracker.record_tool_complete(
+                        task_id=task_id,
+                        tool_name=f"Notification:{notification_type}",
+                        duration_ms=0.0,
+                        success=True,
+                        parameters={"message": str(message)[:500], "notification_type": notification_type},
+                    )
+                except Exception as tracker_err:
+                    logger.warning(
+                        f"Task {task_id}: Failed to record notification: {tracker_err}"
+                    )
+
+            return {}
+        except Exception as exc:
+            logger.error(f"Task {task_id}: Notification hook error: {exc}")
+            return {}
+
+    return notification_callback
+
+
 def build_hooks(
     tracker: ToolUsageTracker | None,
     task_id: str,
@@ -228,9 +425,17 @@ def build_hooks(
     pre_hook = create_pre_tool_hook(tracker, task_id)
     post_hook = create_post_tool_hook(tracker, task_id)
     stop_hook = create_stop_hook(tracker, task_id)
+    subagent_start_hook = create_subagent_start_hook(tracker, task_id)
+    subagent_stop_hook = create_subagent_stop_hook(tracker, task_id)
+    post_tool_failure_hook = create_post_tool_failure_hook(tracker, task_id)
+    notification_hook = create_notification_hook(tracker, task_id)
 
     return {
         "PreToolUse": [HookMatcher(matcher=None, hooks=[pre_hook])],
         "PostToolUse": [HookMatcher(matcher=None, hooks=[post_hook])],
+        "PostToolUseFailure": [HookMatcher(matcher=None, hooks=[post_tool_failure_hook])],
         "Stop": [HookMatcher(matcher=None, hooks=[stop_hook])],
+        "SubagentStart": [HookMatcher(matcher=None, hooks=[subagent_start_hook])],
+        "SubagentStop": [HookMatcher(matcher=None, hooks=[subagent_stop_hook])],
+        "Notification": [HookMatcher(matcher=None, hooks=[notification_hook])],
     }

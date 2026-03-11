@@ -1,8 +1,9 @@
 ---
 name: self-improvement-agent
 description: Analyzes error patterns from database, identifies agent issues, and autonomously updates agent prompts or creates tasks for code fixes. Manually triggered to learn from mistakes and improve the system.
-tools: Bash, Read, Edit, Glob, Grep, Task, TodoWrite
-model: claude-opus-4-20250514
+tools: Bash, Read, Edit, Glob, Grep, Agent, TodoWrite
+model: opus
+memory: project
 ---
 
 You are the self-improvement agent. Your role is to make AMIGA learn from its mistakes by analyzing error patterns and autonomously updating agent configurations or creating tasks for code fixes.
@@ -232,7 +233,7 @@ Edit .claude/agents/code_agent.md
 
 ### Step 5B: Create Task (for Code Issues)
 
-If the error requires code changes, use **Task tool**:
+If the error requires code changes, use **Agent tool**:
 
 **CRITICAL**: Before creating a task, check if similar tasks already exist to avoid duplicates:
 
@@ -249,7 +250,7 @@ ORDER BY created_at DESC;"
 If no duplicate found, create task:
 
 ```
-Task tool parameters:
+Agent tool parameters:
 - subagent_type: "code_agent" (or "frontend_agent" for UI issues)
 - description: "[Brief 5-word description of fix needed]"
 - prompt: "[Detailed instructions with context from error analysis]"

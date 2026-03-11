@@ -22,13 +22,15 @@ The interface is a web chat. The implementation is automated. The monitoring is 
 
 ## Core Components
 
-**Agent Orchestration**: 16 specialized agents coordinated through a task system. Each handles specific aspects - implementation, testing, validation, debugging. They operate in isolated git worktrees to avoid conflicts.
+**Agent Orchestration**: 19 specialized agents coordinated through a task system. Each handles specific aspects - implementation, testing, validation, debugging. They operate in isolated git worktrees created automatically by the SDK.
 
 **Web Interface**: Real-time chat at `localhost:3000/chat` for interaction. Monitoring dashboard at `localhost:3000` for observability. No code editor - just conversations and results.
 
 **Self-Improvement**: SQLite database tracks tool usage, failures, and patterns. The system analyzes its own errors and updates agent behavior autonomously.
 
 **Phase-Aware Execution**: Tasks progress through Explore → Plan → Code → Commit phases. Each phase visible in real-time through the monitoring interface.
+
+**SDK-Native Integration**: Uses the Claude Agent SDK (`claude_agent_sdk`) directly instead of spawning subprocess `claude` processes. Hooks, worktree isolation, effort controls, and agent definitions are all wired through the SDK.
 
 ## Installation
 
@@ -47,13 +49,17 @@ Access: `localhost:3000/chat`
 
 ## Architecture
 
-**Models**: Haiku for routing, Sonnet for implementation, Opus for research and deep debugging. Cost-aware selection.
+**Models**: Haiku for routing (effort=low, max $0.50), Sonnet for implementation (effort=high, max $5.00), Opus for deep debugging (effort=max, max $10.00). Cost-aware selection with per-task budget caps.
 
-**Agents**: orchestrator (delegation), code_agent (Python), frontend_agent (UI/UX), research_agent (analysis), plus QA validators, debuggers, and git workflow managers.
+**Agents**: orchestrator (delegation), code_agent (Python), frontend_agent (UI/UX), research_agent (analysis), plus QA validators, debuggers, and git workflow managers. Agent definitions live in `.claude/agents/*.md` and are loaded automatically via `claude/agent_loader.py`.
+
+**Hooks**: Python SDK callbacks (`claude/sdk_hooks.py`) replace shell script hooks. `PreToolUse` blocks dangerous git operations (`--no-verify`, `--force`, `--hard`). `PostToolUse` records tool completions to SQLite. `Stop` marks session end.
 
 **Persistence**: SQLite tracks tasks, tool usage, errors. Logs in `logs/`, session data in `data/`. Query patterns in `CLAUDE.md`.
 
-**Testing**: 41 modules, 9,843 lines. Pre-commit hooks enforce quality. Coverage targets: 70%+ overall, 80%+ critical paths.
+**Auth**: Session-backed JWT tokens with refresh support. Login returns both `access_token` and `refresh_token`. Sessions stored in SQLite with inactivity tracking.
+
+**Testing**: 57 modules. Pre-commit hooks enforce quality. Coverage targets: 70%+ overall, 80%+ critical paths.
 
 ## Development
 
@@ -81,7 +87,7 @@ Not a product. An exploration.
 
 ## Technical Stack
 
-Python 3.12+, Claude API (Haiku/Sonnet/Opus), Claude Code CLI, Flask, React + TypeScript, SQLite, Playwright MCP
+Python 3.12+, Claude Agent SDK (`claude_agent_sdk`), Claude API (Haiku/Sonnet/Opus), Flask, React + TypeScript, SQLite, Playwright MCP
 
 ## Cost
 
@@ -98,6 +104,6 @@ Issues and suggestions welcome. Development workflow in `CLAUDE.md`.
 
 ---
 
-**Production Ready** | 589 commits | 41 test modules | 16 agents
+**Production Ready** | 57 test modules | 19 agents | Claude Agent SDK
 
 *Intent over implementation*
