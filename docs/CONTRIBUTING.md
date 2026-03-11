@@ -37,6 +37,61 @@ cd amiga
 git remote add upstream https://github.com/ORIGINAL_OWNER/amiga.git
 ```
 
+### Git Authentication
+
+To push changes to GitHub, you need to set up authentication. **SSH is recommended** for better security and convenience.
+
+#### Option 1: SSH Authentication (Recommended)
+
+```bash
+# Generate SSH key
+ssh-keygen -t ed25519 -C "your_email@example.com" -f ~/.ssh/id_ed25519_github
+
+# Display your public key
+cat ~/.ssh/id_ed25519_github.pub
+
+# Add SSH config
+cat >> ~/.ssh/config << 'EOF'
+
+Host github.com
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/id_ed25519_github
+  IdentitiesOnly yes
+EOF
+
+# Add GitHub to known hosts
+ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+# Test connection
+ssh -T git@github.com
+```
+
+**Add the public key to GitHub**:
+1. Copy the output from `cat ~/.ssh/id_ed25519_github.pub`
+2. Go to https://github.com/settings/keys
+3. Click "New SSH key"
+4. Paste your public key and save
+
+**Switch remote to SSH** (if you cloned with HTTPS):
+```bash
+git remote set-url origin git@github.com:YOUR_USERNAME/amiga.git
+```
+
+#### Option 2: Personal Access Token (Alternative)
+
+```bash
+# Create token at: https://github.com/settings/tokens
+# Select scopes: repo, workflow
+
+# Clone with token (or update existing remote)
+git clone https://YOUR_TOKEN@github.com/YOUR_USERNAME/amiga.git
+# OR update existing:
+git remote set-url origin https://YOUR_TOKEN@github.com/YOUR_USERNAME/amiga.git
+```
+
+**Note**: Store tokens securely. Consider using a credential manager or Git credential helper.
+
 ### Development Environment Setup
 
 ```bash
@@ -308,6 +363,20 @@ class TestFeatureName:
 - **Validation enforcement**: `task-completion-validator` REJECTS implementations without tests or with failing tests
 
 ## Pull Request Process
+
+### Push Your Changes
+
+Once you've committed your changes locally, push them to your fork:
+
+```bash
+# Push to your fork (first time for new branch)
+git push -u origin your-branch-name
+
+# Subsequent pushes
+git push
+```
+
+**Note**: If you haven't set up authentication yet, see the [Git Authentication](#git-authentication) section.
 
 ### Before Creating a PR
 

@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(yt-dlp:*)",
+      "WebSearch",
+      "Bash(open:*)",
+      "Bash(python3:*)",
+      "Bash(source venv/bin/activate)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(claude -p:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ],
+    "deny": [],
+    "ask": []
+  },
+  "outputStyle": "concise",
+  "statusLine": {
+    "type": "command",
+    "command": "CLAUDE_STATUS_DISPLAY_MODE=colors CLAUDE_STATUS_PLAN=max5 CLAUDE_STATUS_INFO_MODE=none ~/.claude/utils/claude_monitor_statusline/statusline.rb"
+  }
+}
