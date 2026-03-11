@@ -221,7 +221,7 @@ def _build_project_context(profile: dict) -> str:
     # Add database schemas if available
     databases = p.get("databases", [])
     if databases:
-        parts.append("\nDatabases:")
+        parts.append("\nSQLite Databases:")
         for db in databases:
             db_path = db.get("path", "?")
             size = db.get("size_mb", "?")
@@ -230,6 +230,26 @@ def _build_project_context(profile: dict) -> str:
                 cols = ", ".join(c["name"] for c in table.get("columns", []))
                 row_count = table.get("row_count", "?")
                 parts.append(f"    - {table['name']} ({row_count} rows): {cols}")
+
+    # Add remote database schemas if available
+    remote_dbs = p.get("remote_databases", [])
+    if remote_dbs:
+        parts.append("\nRemote Databases:")
+        for rdb in remote_dbs:
+            db_type = rdb.get("type", "unknown")
+            env_vars = rdb.get("env_vars", [])
+            parts.append(f"  [{db_type}]")
+            if env_vars:
+                parts.append(f"    Env vars: {', '.join(env_vars)}")
+            if rdb.get("config_path"):
+                parts.append(f"    Config: {rdb['config_path']}")
+            if rdb.get("migrations_path"):
+                parts.append(f"    Migrations: {rdb['migrations_path']}")
+            if rdb.get("note"):
+                parts.append(f"    Note: {rdb['note']}")
+            for table in rdb.get("tables", []):
+                cols = ", ".join(f"{c['name']} ({c['type']})" for c in table.get("columns", []))
+                parts.append(f"    - {table['name']}: {cols}")
 
     parts.append("</active_project>")
     return "\n".join(parts)
@@ -385,6 +405,12 @@ Active project tools (operate on the ACTIVE PROJECT, not AMIGA):
 8. project_info
 • Get the full active project profile (languages, frameworks, structure, databases)
 • Use when asked about project setup or overview
+
+9. query_supabase
+• Query the active project's Supabase database via REST API (if project uses Supabase)
+• Reads credentials from project .env files automatically
+• Use AUTOMATICALLY when asked about Supabase data, remote database queries
+• Examples: "show submissions", "query supabase releases", "check pending submissions"
 '''}
 When you ask questions, I use these tools to get accurate real-time data instead of guessing or creating background tasks.
 </tools>
@@ -456,8 +482,10 @@ USE TOOLS when:
   - "find where auth is used", "search for TODO", "where is X defined"
 • list_files: Exploring project structure
   - "what files are in src/", "list all python files", "show project structure"
-• query_project_database: Querying the active project's databases
+• query_project_database: Querying the active project's SQLite databases
   - "check emails", "how many users", "show recent orders", "query the database"
+• query_supabase: Querying the active project's Supabase database (if detected)
+  - "show submissions", "query releases", "check pending items", "supabase data"
 • project_info: Project overview questions
   - "what project is active", "project info", "what languages does it use"
 • git_query: Git status, history, changes

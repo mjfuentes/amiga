@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import subprocess
 from datetime import datetime, timezone
@@ -143,6 +144,7 @@ def scan_project(path: Path) -> dict[str, Any]:
     git_info = _detect_git_info(path)
     file_count = _count_files(path)
     databases = _detect_databases(path)
+    remote_databases = _detect_remote_databases(path)
 
     primary_language = languages[0] if languages else None
 
@@ -161,6 +163,7 @@ def scan_project(path: Path) -> dict[str, Any]:
         "git": git_info,
         "file_count": file_count,
         "databases": databases,
+        "remote_databases": remote_databases,
         "total_lines": None,
     }
 
@@ -728,3 +731,485 @@ def _detect_databases(path: Path) -> list[dict[str, Any]]:
         if schema is not None:
             databases.append(schema)
     return databases
+
+
+# ---------------------------------------------------------------------------
+# Remote database detection
+# ---------------------------------------------------------------------------
+
+# Maximum depth when searching subdirectories for database config signals
+_REMOTE_DB_SEARCH_DEPTH = 2
+
+# Env var patterns per database type
+_SUPABASE_ENV_VARS = frozenset({"SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"})
+_FIREBASE_ENV_VARS = frozenset({"FIREBASE_API_KEY", "FIREBASE_AUTH_DOMAIN", "FIREBASE_PROJECT_ID", "FIREBASE_STORAGE_BUCKET", "FIREBASE_MESSAGING_SENDER_ID", "FIREBASE_APP_ID"})
+_POSTGRES_ENV_VARS = frozenset({"DATABASE_URL", "POSTGRES_URL", "POSTGRES_HOST", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB"})
+_MONGODB_ENV_VARS = frozenset({"MONGODB_URI", "MONGO_URL", "MONGO_URI", "MONGODB_URL"})
+_MYSQL_ENV_VARS = frozenset({"MYSQL_HOST", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE", "MYSQL_URL"})
+
+
+def _find_env_var_names(env_file: Path) -> set[str]:
+    """Extract environment variable names from a .env file. Never reads values."""
+    content = _read_file_safe(env_file)
+    if content is None:
+        return set()
+    names: set[str] = set()
+    for line in content.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" in line:
+            name = line.split("=", 1)[0].strip()
+            if name:
+                names.add(name)
+    return names
+
+
+def _find_env_files(directory: Path) -> list[Path]:
+    """Find .env* files in a directory (non-recursive)."""
+    env_files: list[Path] = []
+    try:
+        for entry in directory.iterdir():
+            if entry.is_file() and entry.name.startswith(".env"):
+                env_files.append(entry)
+    except (PermissionError, OSError):
+        pass
+    return env_files
+
+
+def _collect_env_vars_from_dir(directory: Path) -> tuple[set[str], list[Path]]:
+    """Collect all env var names from .env* files in a directory.
+
+    Returns (all_var_names, env_file_paths).
+    """
+    all_vars: set[str] = set()
+    env_files = _find_env_files(directory)
+    for ef in env_files:
+        all_vars.update(_find_env_var_names(ef))
+    return all_vars, env_files
+
+
+def _get_subdirs(path: Path, max_depth: int = _REMOTE_DB_SEARCH_DEPTH) -> list[Path]:
+    """Get subdirectories up to max_depth, skipping excluded dirs.
+
+    Returns list of (directory, relative_prefix) pairs.
+    Always includes the root path itself.
+    """
+    dirs: list[Path] = [path]
+    if max_depth < 1:
+        return dirs
+
+    try:
+        for entry in path.iterdir():
+            if entry.is_dir() and not _should_skip(entry):
+                dirs.append(entry)
+                if max_depth >= 2:
+                    try:
+                        for sub in entry.iterdir():
+                            if sub.is_dir() and not _should_skip(sub):
+                                dirs.append(sub)
+                    except (PermissionError, OSError):
+                        pass
+    except (PermissionError, OSError):
+        pass
+    return dirs
+
+
+def _parse_sql_migrations(migrations_dir: Path) -> list[dict[str, Any]]:
+    """Parse SQL migration files to extract table schemas.
+
+    Reads all .sql files in sorted order, extracts CREATE TABLE and
+    ALTER TABLE ADD COLUMN statements. Best-effort parsing.
+
+    Returns list of table dicts: [{"name": str, "columns": [{"name": str, "type": str}]}]
+    """
+    if not migrations_dir.is_dir():
+        return []
+
+    # Collect all .sql files sorted by name (migration order)
+    sql_files: list[Path] = sorted(
+        f for f in migrations_dir.iterdir() if f.is_file() and f.suffix.lower() == ".sql"
+    )
+
+    # Accumulate tables: table_name -> list of {"name": col, "type": typ}
+    tables: dict[str, list[dict[str, str]]] = {}
+
+    # Regex for CREATE TABLE [IF NOT EXISTS] <name> (
+    create_re = re.compile(
+        r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s*\(",
+        re.IGNORECASE,
+    )
+
+    # Regex for ALTER TABLE <name> ADD COLUMN [IF NOT EXISTS] <col> <type>
+    # Handles both single and comma-separated multi-column ALTER statements
+    alter_add_re = re.compile(
+        r"ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s+(\w+)",
+        re.IGNORECASE,
+    )
+    # Regex to find ALTER TABLE <name> blocks
+    alter_table_re = re.compile(
+        r"ALTER\s+TABLE\s+(\w+)\s+((?:ADD\s+COLUMN\s+.+?)(?:;|$))",
+        re.IGNORECASE | re.DOTALL,
+    )
+
+    for sql_file in sql_files:
+        content = _read_file_safe(sql_file)
+        if content is None:
+            continue
+
+        # Strip SQL comments (-- line comments, but keep content inside strings roughly)
+        # We do a simplified strip: remove -- comments at line level
+        lines = content.splitlines()
+        cleaned_lines = []
+        for line in lines:
+            # Remove line comments (simplistic, doesn't handle strings perfectly)
+            idx = line.find("--")
+            if idx >= 0:
+                cleaned_lines.append(line[:idx])
+            else:
+                cleaned_lines.append(line)
+        cleaned = "\n".join(cleaned_lines)
+
+        # Find CREATE TABLE blocks
+        for match in create_re.finditer(cleaned):
+            table_name = match.group(1)
+            # Extract everything between the opening ( and the matching )
+            start = match.end()
+            columns = _extract_columns_from_create(cleaned, start)
+            if columns:
+                tables[table_name] = columns
+
+        # Find ALTER TABLE ... ADD COLUMN blocks
+        for at_match in alter_table_re.finditer(cleaned):
+            table_name = at_match.group(1)
+            add_block = at_match.group(2)
+            if table_name not in tables:
+                tables[table_name] = []
+            existing = {c["name"] for c in tables[table_name]}
+            for col_match in alter_add_re.finditer(add_block):
+                col_name = col_match.group(1)
+                col_type = col_match.group(2).upper()
+                if col_name not in existing:
+                    tables[table_name].append({"name": col_name, "type": col_type})
+                    existing.add(col_name)
+
+    return [{"name": name, "columns": cols} for name, cols in tables.items()]
+
+
+def _extract_columns_from_create(sql: str, start_pos: int) -> list[dict[str, str]]:
+    """Extract column definitions from a CREATE TABLE body starting after '('.
+
+    Returns list of {"name": col_name, "type": col_type}.
+    """
+    # Find the matching closing paren
+    depth = 1
+    pos = start_pos
+    while pos < len(sql) and depth > 0:
+        ch = sql[pos]
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        pos += 1
+
+    if depth != 0:
+        return []
+
+    body = sql[start_pos : pos - 1]
+
+    # Split on commas, but respect parentheses (for CHECK constraints, etc.)
+    parts = _split_respecting_parens(body)
+
+    columns: list[dict[str, str]] = []
+    # Keywords that start non-column definitions (table-level constraints)
+    skip_prefixes = frozenset({
+        "PRIMARY", "FOREIGN", "UNIQUE", "CHECK", "CONSTRAINT", "INDEX", "EXCLUDE",
+    })
+
+    # Pattern for inline UNIQUE(col, col) which is a table constraint, not a column
+    unique_inline_re = re.compile(r"^UNIQUE\s*\(", re.IGNORECASE)
+
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        # Skip table constraints
+        first_word = part.split()[0].upper() if part.split() else ""
+        if first_word in skip_prefixes:
+            continue
+        # Also skip UNIQUE(...) inline constraints
+        if unique_inline_re.match(part):
+            continue
+
+        # Parse: column_name type [rest...]
+        tokens = part.split()
+        if len(tokens) >= 2:
+            col_name = tokens[0]
+            col_type = tokens[1].upper()
+            # Clean type: remove trailing commas, parens content for things like VARCHAR(255)
+            col_type = re.sub(r"\(.*?\)", "", col_type).strip(",").strip()
+            if col_type:
+                columns.append({"name": col_name, "type": col_type})
+
+    return columns
+
+
+def _split_respecting_parens(text: str) -> list[str]:
+    """Split text by commas, but ignore commas inside parentheses."""
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for ch in text:
+        if ch == "(":
+            depth += 1
+            current.append(ch)
+        elif ch == ")":
+            depth -= 1
+            current.append(ch)
+        elif ch == "," and depth == 0:
+            parts.append("".join(current))
+            current = []
+        else:
+            current.append(ch)
+    if current:
+        parts.append("".join(current))
+    return parts
+
+
+def _detect_supabase(search_dir: Path, project_root: Path) -> dict[str, Any] | None:
+    """Detect Supabase in a directory. Returns remote_database entry or None."""
+    # Check for supabase/ directory
+    supabase_dir = search_dir / "supabase"
+    has_supabase_dir = supabase_dir.is_dir()
+
+    # Check package.json for @supabase/supabase-js
+    has_supabase_dep = False
+    pkg = _parse_json_safe(search_dir / "package.json")
+    if pkg is not None:
+        all_deps: dict[str, str] = {}
+        for key in ("dependencies", "devDependencies"):
+            deps = pkg.get(key)
+            if isinstance(deps, dict):
+                all_deps.update(deps)
+        has_supabase_dep = "@supabase/supabase-js" in all_deps
+
+    # Check env vars
+    env_vars, _ = _collect_env_vars_from_dir(search_dir)
+    supabase_env = env_vars & _SUPABASE_ENV_VARS
+
+    # Need at least one signal
+    if not has_supabase_dir and not has_supabase_dep and not supabase_env:
+        return None
+
+    # Build relative paths
+    try:
+        rel_dir = str(search_dir.resolve().relative_to(project_root.resolve()))
+        if rel_dir == ".":
+            rel_dir = ""
+    except ValueError:
+        rel_dir = ""
+
+    config_path = f"{rel_dir}/supabase/" if rel_dir else "supabase/"
+    if not has_supabase_dir:
+        config_path = None
+
+    # Parse migrations if available
+    migrations_path = None
+    tables: list[dict[str, Any]] = []
+    migrations_dir = supabase_dir / "migrations"
+    if migrations_dir.is_dir():
+        migrations_path = f"{rel_dir}/supabase/migrations/" if rel_dir else "supabase/migrations/"
+        tables = _parse_sql_migrations(migrations_dir)
+
+    result: dict[str, Any] = {
+        "type": "supabase",
+        "env_vars": sorted(supabase_env),
+    }
+    if config_path:
+        result["config_path"] = config_path
+    if migrations_path:
+        result["migrations_path"] = migrations_path
+    if tables:
+        result["tables"] = tables
+
+    return result
+
+
+def _detect_firebase(search_dir: Path, project_root: Path) -> dict[str, Any] | None:
+    """Detect Firebase/Firestore in a directory."""
+    has_config = (search_dir / "firebase.json").is_file() or (search_dir / ".firebaserc").is_file()
+
+    has_dep = False
+    pkg = _parse_json_safe(search_dir / "package.json")
+    if pkg is not None:
+        all_deps: dict[str, str] = {}
+        for key in ("dependencies", "devDependencies"):
+            deps = pkg.get(key)
+            if isinstance(deps, dict):
+                all_deps.update(deps)
+        has_dep = "firebase" in all_deps or "@firebase/firestore" in all_deps
+
+    env_vars, _ = _collect_env_vars_from_dir(search_dir)
+    firebase_env = {v for v in env_vars if v.startswith("FIREBASE_")}
+
+    if not has_config and not has_dep and not firebase_env:
+        return None
+
+    result: dict[str, Any] = {
+        "type": "firebase",
+        "env_vars": sorted(firebase_env),
+        "note": "Firebase/Firestore is schemaless - no table schema available",
+    }
+    if has_config:
+        try:
+            rel = str(search_dir.resolve().relative_to(project_root.resolve()))
+            config_path = f"{rel}/firebase.json" if rel != "." else "firebase.json"
+        except ValueError:
+            config_path = "firebase.json"
+        result["config_path"] = config_path
+
+    return result
+
+
+def _detect_postgres(search_dir: Path) -> dict[str, Any] | None:
+    """Detect direct PostgreSQL (non-Supabase) in a directory."""
+    env_vars, _ = _collect_env_vars_from_dir(search_dir)
+    pg_env = env_vars & _POSTGRES_ENV_VARS
+
+    has_dep = False
+    # Python deps
+    for manifest in ("requirements.txt", "pyproject.toml", "Pipfile"):
+        content = _read_file_safe(search_dir / manifest)
+        if content and ("psycopg2" in content.lower() or "asyncpg" in content.lower()):
+            has_dep = True
+            break
+
+    # JS deps
+    pkg = _parse_json_safe(search_dir / "package.json")
+    if pkg is not None:
+        all_deps: dict[str, str] = {}
+        for key in ("dependencies", "devDependencies"):
+            deps = pkg.get(key)
+            if isinstance(deps, dict):
+                all_deps.update(deps)
+        if "pg" in all_deps:
+            has_dep = True
+
+    if not pg_env and not has_dep:
+        return None
+
+    return {
+        "type": "postgresql",
+        "env_vars": sorted(pg_env),
+    }
+
+
+def _detect_mongodb(search_dir: Path) -> dict[str, Any] | None:
+    """Detect MongoDB in a directory."""
+    env_vars, _ = _collect_env_vars_from_dir(search_dir)
+    mongo_env = env_vars & _MONGODB_ENV_VARS
+
+    has_dep = False
+    for manifest in ("requirements.txt", "pyproject.toml", "Pipfile"):
+        content = _read_file_safe(search_dir / manifest)
+        if content and ("pymongo" in content.lower() or "motor" in content.lower()):
+            has_dep = True
+            break
+
+    pkg = _parse_json_safe(search_dir / "package.json")
+    if pkg is not None:
+        all_deps: dict[str, str] = {}
+        for key in ("dependencies", "devDependencies"):
+            deps = pkg.get(key)
+            if isinstance(deps, dict):
+                all_deps.update(deps)
+        if "mongodb" in all_deps or "mongoose" in all_deps:
+            has_dep = True
+
+    if not mongo_env and not has_dep:
+        return None
+
+    return {
+        "type": "mongodb",
+        "env_vars": sorted(mongo_env),
+        "note": "MongoDB is schemaless - no table schema available",
+    }
+
+
+def _detect_mysql(search_dir: Path) -> dict[str, Any] | None:
+    """Detect MySQL in a directory."""
+    env_vars, _ = _collect_env_vars_from_dir(search_dir)
+    mysql_env = {v for v in env_vars if v.startswith("MYSQL_")}
+
+    has_dep = False
+    for manifest in ("requirements.txt", "pyproject.toml", "Pipfile"):
+        content = _read_file_safe(search_dir / manifest)
+        if content and ("mysql-connector" in content.lower() or "mysqlclient" in content.lower()):
+            has_dep = True
+            break
+
+    pkg = _parse_json_safe(search_dir / "package.json")
+    if pkg is not None:
+        all_deps: dict[str, str] = {}
+        for key in ("dependencies", "devDependencies"):
+            deps = pkg.get(key)
+            if isinstance(deps, dict):
+                all_deps.update(deps)
+        if "mysql2" in all_deps:
+            has_dep = True
+
+    if not mysql_env and not has_dep:
+        return None
+
+    return {
+        "type": "mysql",
+        "env_vars": sorted(mysql_env),
+    }
+
+
+def _detect_remote_databases(path: Path) -> list[dict[str, Any]]:
+    """Detect remote databases (Supabase, Firebase, PostgreSQL, MongoDB, MySQL).
+
+    Searches the project root and subdirectories up to depth 2 for config
+    signals like env vars, dependency declarations, and config files.
+    """
+    results: list[dict[str, Any]] = []
+    seen_types: dict[str, dict[str, Any]] = {}  # type -> best result
+
+    search_dirs = _get_subdirs(path)
+
+    for search_dir in search_dirs:
+        # Supabase
+        sb = _detect_supabase(search_dir, path)
+        if sb is not None:
+            existing = seen_types.get("supabase")
+            # Prefer the one with more info (tables, migrations)
+            if existing is None or (sb.get("tables") and not existing.get("tables")):
+                seen_types["supabase"] = sb
+
+        # Firebase
+        fb = _detect_firebase(search_dir, path)
+        if fb is not None and "firebase" not in seen_types:
+            seen_types["firebase"] = fb
+
+        # PostgreSQL (only if no supabase detected - supabase IS postgres)
+        pg = _detect_postgres(search_dir)
+        if pg is not None and "supabase" not in seen_types and "postgresql" not in seen_types:
+            seen_types["postgresql"] = pg
+
+        # MongoDB
+        mg = _detect_mongodb(search_dir)
+        if mg is not None and "mongodb" not in seen_types:
+            seen_types["mongodb"] = mg
+
+        # MySQL
+        my = _detect_mysql(search_dir)
+        if my is not None and "mysql" not in seen_types:
+            seen_types["mysql"] = my
+
+    # Stable ordering: supabase, firebase, postgresql, mongodb, mysql
+    for db_type in ("supabase", "firebase", "postgresql", "mongodb", "mysql"):
+        if db_type in seen_types:
+            results.append(seen_types[db_type])
+
+    return results

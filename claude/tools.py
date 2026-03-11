@@ -320,13 +320,43 @@ PROJECT_INFO_TOOL = {
     },
 }
 
+QUERY_SUPABASE_TOOL = {
+    "name": "query_supabase",
+    "description": "Query the active project's Supabase database using the REST API. "
+    "Reads SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY from the project's .env files. "
+    "Use this for querying Supabase tables when the project has a remote Supabase database.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "table": {"type": "string", "description": "Table name to query"},
+            "select": {
+                "type": "string",
+                "description": "Columns to select (default: '*'). Use PostgREST syntax.",
+            },
+            "filters": {
+                "type": "string",
+                "description": "PostgREST filter string (e.g., 'status=eq.pending', 'email=ilike.*@gmail.com')",
+            },
+            "limit": {
+                "type": "integer",
+                "description": "Max rows (default: 20, max: 100)",
+            },
+            "order": {
+                "type": "string",
+                "description": "Order by (e.g., 'created_at.desc')",
+            },
+        },
+        "required": ["table"],
+    },
+}
+
 
 # ---------------------------------------------------------------------------
 # Tool collections
 # ---------------------------------------------------------------------------
 
 _BASE_TOOLS = [SQLITE_TOOL, WEBSEARCH_TOOL, GIT_TOOL]
-_PROJECT_TOOLS = [READ_FILE_TOOL, SEARCH_CODE_TOOL, LIST_FILES_TOOL, QUERY_PROJECT_DB_TOOL, PROJECT_INFO_TOOL]
+_PROJECT_TOOLS = [READ_FILE_TOOL, SEARCH_CODE_TOOL, LIST_FILES_TOOL, QUERY_PROJECT_DB_TOOL, PROJECT_INFO_TOOL, QUERY_SUPABASE_TOOL]
 
 # All available tools -- includes project tools so they are always registered.
 # Individual executors return a helpful error when no active project is set.
@@ -864,6 +894,137 @@ async def execute_project_info() -> str:
     )
 
 
+def _read_supabase_credentials(project_root: Path) -> tuple[str | None, str | None]:
+    """Read Supabase URL and service role key from project .env files.
+
+    Searches .env, .env.local, .env.production in the project root and
+    immediate subdirectories. Returns (url, key) or (None, None).
+    """
+    env_filenames = (".env", ".env.local", ".env.production")
+    search_dirs = [project_root]
+
+    # Also search immediate subdirectories (e.g., website/)
+    try:
+        for entry in project_root.iterdir():
+            if entry.is_dir() and not entry.name.startswith(".") and entry.name not in (
+                "node_modules", "venv", ".venv", "dist", "build"
+            ):
+                search_dirs.append(entry)
+    except (PermissionError, OSError):
+        pass
+
+    url: str | None = None
+    key: str | None = None
+
+    for search_dir in search_dirs:
+        for env_name in env_filenames:
+            env_file = search_dir / env_name
+            if not env_file.is_file():
+                continue
+            try:
+                content = env_file.read_text(encoding="utf-8", errors="replace")
+            except (OSError, PermissionError):
+                continue
+
+            for line in content.splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" not in line:
+                    continue
+                name, _, value = line.partition("=")
+                name = name.strip()
+                value = value.strip().strip("'\"")
+
+                if name in ("SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL") and value:
+                    url = url or value
+                if name == "SUPABASE_SERVICE_ROLE_KEY" and value:
+                    key = key or value
+
+            if url and key:
+                return url, key
+
+    return url, key
+
+
+async def execute_query_supabase(
+    table: str,
+    select: str = "*",
+    filters: str | None = None,
+    limit: int = 20,
+    order: str | None = None,
+) -> str:
+    """Query a Supabase database via the REST API."""
+    project_root = _get_active_project_path()
+    if project_root is None:
+        return json.dumps({"success": False, "error": _NO_ACTIVE_PROJECT_MSG})
+
+    if not table:
+        return json.dumps({"success": False, "error": "Table name is required"})
+
+    # Validate table name (alphanumeric + underscore only)
+    if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", table):
+        return json.dumps({"success": False, "error": f"Invalid table name: {table}"})
+
+    url, service_key = _read_supabase_credentials(project_root)
+    if not url or not service_key:
+        return json.dumps({
+            "success": False,
+            "error": "Supabase credentials not found. Need SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in project .env files.",
+        })
+
+    # Clamp limit
+    limit = max(1, min(limit, 100))
+
+    # Build request URL
+    api_url = f"{url.rstrip('/')}/rest/v1/{table}"
+    params: list[str] = [f"select={select}"]
+    if filters:
+        params.append(filters)
+    params.append(f"limit={limit}")
+    if order:
+        params.append(f"order={order}")
+
+    full_url = f"{api_url}?{'&'.join(params)}"
+
+    headers = {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+        "Accept": "application/json",
+    }
+
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(full_url, headers=headers)
+
+        if response.status_code == 200:
+            data = response.json()
+            return json.dumps({
+                "success": True,
+                "table": table,
+                "row_count": len(data),
+                "results": data,
+            })
+        else:
+            error_body = response.text[:500]
+            logger.warning(f"Supabase API error {response.status_code}: {error_body}")
+            return json.dumps({
+                "success": False,
+                "error": f"Supabase API error ({response.status_code}): {error_body}",
+            })
+
+    except ImportError:
+        return json.dumps({
+            "success": False,
+            "error": "httpx library not available. Install with: pip install httpx",
+        })
+    except Exception as e:
+        logger.error(f"Supabase query error: {e}", exc_info=True)
+        return json.dumps({"success": False, "error": f"Request failed: {str(e)}"})
+
+
 # ---------------------------------------------------------------------------
 # Tool dispatcher
 # ---------------------------------------------------------------------------
@@ -921,6 +1082,14 @@ async def execute_tool(tool_name: str, tool_input: dict[str, Any]) -> str:
         )
     elif tool_name == "project_info":
         return await execute_project_info()
+    elif tool_name == "query_supabase":
+        return await execute_query_supabase(
+            table=tool_input.get("table", ""),
+            select=tool_input.get("select", "*"),
+            filters=tool_input.get("filters"),
+            limit=tool_input.get("limit", 20),
+            order=tool_input.get("order"),
+        )
     else:
         logger.error(f"Unknown tool requested: {tool_name}")
         return json.dumps({"success": False, "error": f"Unknown tool: {tool_name}"})
