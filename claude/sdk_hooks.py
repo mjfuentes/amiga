@@ -16,8 +16,8 @@ from claude_agent_sdk import (
     PostToolUseHookInput,
     PreToolUseHookInput,
     StopHookInput,
-    HookJSONOutput,
 )
+from claude_agent_sdk.types import SyncHookJSONOutput
 
 from tasks.tracker import ToolUsageTracker
 
@@ -36,11 +36,11 @@ BLOCKED_GIT_PATTERNS: tuple[tuple[str, str], ...] = (
 HookInput = PreToolUseHookInput | PostToolUseHookInput | StopHookInput
 HookCallbackType = Callable[
     [HookInput, str | None, HookContext],
-    Awaitable[HookJSONOutput],
+    Awaitable[SyncHookJSONOutput],
 ]
 
 
-def _check_blocked_git_command(command: str) -> HookJSONOutput | None:
+def _check_blocked_git_command(command: str) -> SyncHookJSONOutput | None:
     """Check if a command contains a blocked git pattern.
 
     Returns a block response if the command should be blocked, None otherwise.
@@ -51,7 +51,7 @@ def _check_blocked_git_command(command: str) -> HookJSONOutput | None:
     for pattern, reason in BLOCKED_GIT_PATTERNS:
         if pattern in command:
             logger.warning(f"Blocked git command: {reason} (pattern={pattern!r})")
-            return HookJSONOutput(decision="block", reason=reason)
+            return SyncHookJSONOutput(decision="block", reason=reason)
 
     return None
 
@@ -69,7 +69,7 @@ def create_pre_tool_hook(
         hook_input: HookInput,
         tool_use_id: str | None,
         context: HookContext,
-    ) -> HookJSONOutput:
+    ) -> SyncHookJSONOutput:
         tool_name = hook_input.get("tool_name", "unknown")
         tool_input = hook_input.get("tool_input", {})
 
@@ -87,7 +87,7 @@ def create_pre_tool_hook(
             if block_result is not None:
                 return block_result
 
-        return HookJSONOutput()
+        return SyncHookJSONOutput()
 
     return pre_tool_callback
 
@@ -105,7 +105,7 @@ def create_post_tool_hook(
         hook_input: HookInput,
         tool_use_id: str | None,
         context: HookContext,
-    ) -> HookJSONOutput:
+    ) -> SyncHookJSONOutput:
         tool_name = hook_input.get("tool_name", "unknown")
         tool_input = hook_input.get("tool_input", {})
 
@@ -123,7 +123,7 @@ def create_post_tool_hook(
                 parameters=params,
             )
 
-        return HookJSONOutput()
+        return SyncHookJSONOutput()
 
     return post_tool_callback
 
@@ -141,7 +141,7 @@ def create_stop_hook(
         hook_input: HookInput,
         tool_use_id: str | None,
         context: HookContext,
-    ) -> HookJSONOutput:
+    ) -> SyncHookJSONOutput:
         logger.info(f"Task {task_id}: Session ending (Stop hook)")
 
         if tracker:
@@ -149,7 +149,7 @@ def create_stop_hook(
                 task_id, "session_ended", "Claude session completed"
             )
 
-        return HookJSONOutput()
+        return SyncHookJSONOutput()
 
     return stop_callback
 
