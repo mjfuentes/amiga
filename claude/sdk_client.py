@@ -38,6 +38,11 @@ from utils.git import get_git_tracker
 
 logger = logging.getLogger(__name__)
 
+# Remove CLAUDECODE env var to prevent "nested session" detection.
+# The monitoring server may be started from within a Claude Code session
+# (e.g., via deploy.sh), but SDK tasks are independent sessions.
+os.environ.pop("CLAUDECODE", None)
+
 # Default workspace path fallback
 _DEFAULT_WORKSPACE_PATH = "/Users/matifuentes/Workspace"
 
@@ -172,6 +177,8 @@ class ClaudeSDKSession:
         env_vars = {
             "TASK_ID": task_id,
             "PROJECT_ROOT": str(project_root),
+            # Prevent Jest/react-scripts from hanging in watch mode
+            "CI": "true",
         }
 
         # Worktree is the only non-standard flag, kept in extra_args
@@ -204,6 +211,7 @@ class ClaudeSDKSession:
         task_id: str,
         prompt: str,
         progress_callback: Callable[[str, int], None] | None = None,
+        heartbeat_callback: Callable[[], None] | None = None,
         effort: EffortLevel = "high",
         max_budget_usd: float | None = None,
         use_worktree: bool = True,
@@ -259,7 +267,14 @@ class ClaudeSDKSession:
                     turn_count += 1
                     self._log_assistant_message(task_id, message, turn_count)
 
-                    if progress_callback:
+                    # Heartbeat: touch updated_at every turn so stale detector
+                    # knows the task is still alive during long thinking periods
+                    if heartbeat_callback:
+                        heartbeat_callback()
+
+                    # Only emit progress for first turn and every 10th turn
+                    # to avoid flooding the activity log with noise
+                    if progress_callback and (turn_count == 1 or turn_count % 10 == 0):
                         progress_callback(
                             f"Processing... turn {turn_count}", turn_count
                         )
@@ -370,6 +385,7 @@ class ClaudeSDKPool:
         context: str | None = None,
         pid_callback: Callable[[int], None] | None = None,
         progress_callback: Callable[[str, int], None] | None = None,
+        heartbeat_callback: Callable[[], None] | None = None,
         effort: EffortLevel = "high",
         max_budget_usd: float | None = None,
         use_worktree: bool = True,
@@ -407,6 +423,7 @@ class ClaudeSDKPool:
                     task_id=task_id,
                     prompt=prompt,
                     progress_callback=progress_callback,
+                    heartbeat_callback=heartbeat_callback,
                     effort=effort,
                     max_budget_usd=max_budget_usd,
                     use_worktree=use_worktree,
