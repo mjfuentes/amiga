@@ -10,6 +10,8 @@
   <img src="https://img.shields.io/badge/python-3.12%2B-blue?style=flat-square" alt="Python"/>
 </p>
 
+> **Note**: This project is no longer being worked on. It was a learning experiment that provided valuable insights for future work. I'm now focused on a new project that will be shared soon.
+
 ---
 
 AMIGA is a multi-agent coding system that turns natural language into working software. You chat. It codes, tests, commits, and deploys. 16 agents, each with a job. No hand-holding.
@@ -21,36 +23,6 @@ AMIGA is a multi-agent coding system that turns natural language into working so
 - **Tracks everything.** Every tool call, every failure, every token spent. SQLite. Queryable. The self-improvement agent reads its own error history and rewrites agent prompts to stop making the same mistakes.
 - **Ships through a chat UI.** `localhost:3000`. Type what you need. Watch it work. Real-time tool usage, phase progression, cost tracking.
 
-## Quick Start
-
-One command:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/mjfuentes/amiga/main/install.sh | bash
-```
-
-Or clone and setup manually:
-
-```bash
-git clone git@github.com:mjfuentes/amiga.git && cd amiga
-./amiga setup
-```
-
-The setup wizard handles venv, dependencies, API key, frontend build, and daemon install. No login required -- opens straight to the chat.
-
-```bash
-amiga start              # Start the server
-amiga stop               # Stop it
-amiga restart             # Restart
-amiga status              # Server, daemon, tasks, cost
-amiga logs                # Tail the logs
-amiga doctor             # System health check
-amiga update              # Pull latest, rebuild, restart
-amiga db "SELECT ..."     # Query the task database
-amiga uninstall           # Clean removal
-```
-
-Open `localhost:3000`. Start talking.
 
 ## How it works
 
@@ -113,21 +85,6 @@ Merge to main --> Result back in chat
 
 Python 3.12+ / Claude Agent SDK / Flask / React + TypeScript / SQLite / Playwright MCP
 
-## Cost
-
-~$75/month typical. Set `DAILY_COST_LIMIT` and `MONTHLY_COST_LIMIT` in `.env` to cap it.
-
-## Development
-
-```bash
-./deploy.sh chat          # Build frontend, deploy, restart
-pytest tests/ -v          # Tests are mandatory. No exceptions.
-```
-
-Check the database:
-```bash
-sqlite3 data/agentlab.db "SELECT task_id, status, error FROM tasks ORDER BY updated_at DESC LIMIT 10;"
-```
 
 Full conventions and architecture details in [`CLAUDE.md`](CLAUDE.md). That's the real documentation.
 
