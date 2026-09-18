@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/python-3.12%2B-blue?style=flat-square" alt="Python"/>
 </p>
 
-> **Note**: This project is no longer being worked on. It was a learning experiment that provided valuable insights for future work. I'm now focused on a new project that will be shared soon.
+> **Note**: This project is no longer being worked on. It was a learning experiment that provided valuable insights for future work. The next iteration is [cc+](https://github.com/kerplunkstudio/ccplus).
 
 ---
 
